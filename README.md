@@ -9,10 +9,10 @@
   </a>
   <br/>
   <br/>
-  <h1>SD-CORE Webui Operator</h1>
+  <h1>SD-Core Webui Operator</h1>
 </div>
 
-A Charmed Operator for SDCORE's Webui component, a configuration service in SD-Core. 
+A Charmed Operator for SD-Core's Webui component, a configuration service in SD-Core. 
 
 ## Usage
 
