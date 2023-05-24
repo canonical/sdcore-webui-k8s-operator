@@ -32,7 +32,7 @@ async def build_and_deploy(ops_test):
     """Build the charm-under-test and deploy it."""
     charm = await ops_test.build_charm(".")
     resources = {
-        "smf-image": METADATA["resources"]["smf-image"]["upstream-source"],
+        "webui-image": METADATA["resources"]["webui-image"]["upstream-source"],
     }
     await ops_test.model.deploy(
         charm,
