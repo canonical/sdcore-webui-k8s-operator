@@ -5,7 +5,6 @@
 """Charmed operator for the 5G Webui service."""
 
 import logging
-from typing import Union
 
 from charms.data_platform_libs.v0.data_interfaces import (  # type: ignore[import]
     DatabaseCreatedEvent,
@@ -16,7 +15,7 @@ from charms.observability_libs.v1.kubernetes_service_patch import (  # type: ign
 )
 from jinja2 import Environment, FileSystemLoader
 from lightkube.models.core_v1 import ServicePort
-from ops.charm import CharmBase, PebbleReadyEvent
+from ops.charm import CharmBase, EventBase
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 from ops.pebble import Layer
@@ -27,6 +26,24 @@ BASE_CONFIG_PATH = "/etc/webui"
 CONFIG_FILE_NAME = "webuicfg.conf"
 DATABASE_RELATION_NAME = "database"
 DATABASE_NAME = "free5gc"
+
+
+def render_config_file(database_name: str, database_url: str) -> str:
+    """Renders webui configuration file based on Jinja template.
+
+    Args:
+        database_name: Database Name
+        database_url: Database URL.
+
+    Returns:
+        str: Content of the configuration file.
+    """
+    jinja2_environment = Environment(loader=FileSystemLoader("src/templates/"))
+    template = jinja2_environment.get_template("webuicfg.conf.j2")
+    return template.render(
+        database_name=database_name,
+        database_url=database_url,
+    )
 
 
 class WebuiOperatorCharm(CharmBase):
@@ -55,10 +72,8 @@ class WebuiOperatorCharm(CharmBase):
             ],
         )
 
-    def _on_webui_pebble_ready(
-        self,
-        event: Union[PebbleReadyEvent, DatabaseCreatedEvent],
-    ) -> None:
+    def _on_webui_pebble_ready(self, event: EventBase) -> None:
+        """Handles pebble ready event."""
         if not self._database_relation_is_created():
             self.unit.status = BlockedStatus("Waiting for database relation to be created")
             return
@@ -84,29 +99,11 @@ class WebuiOperatorCharm(CharmBase):
             self.unit.status = WaitingStatus("Waiting for storage to be attached")
             event.defer()
             return
-        config_file_content = self._render_config_file(
+        config_file_content = render_config_file(
             database_name=DATABASE_NAME, database_url=event.uris.split(",")[0]
         )
         self._write_config_file(content=config_file_content)
         self._on_webui_pebble_ready(event=event)
-
-    @staticmethod
-    def _render_config_file(database_name: str, database_url: str) -> str:
-        """Renders webui configuration file based on Jinja template.
-
-        Args:
-            database_name: Database Name
-            database_url: Database URL.
-
-        Returns:
-            str: Content of the configuration file.
-        """
-        jinja2_environment = Environment(loader=FileSystemLoader("src/templates/"))
-        template = jinja2_environment.get_template("webuicfg.conf.j2")
-        return template.render(
-            database_name=database_name,
-            database_url=database_url,
-        )
 
     def _write_config_file(self, content: str) -> None:
         """Writes configuration file based on provided content.
@@ -163,5 +160,5 @@ class WebuiOperatorCharm(CharmBase):
         }
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: nocover
     main(WebuiOperatorCharm)
