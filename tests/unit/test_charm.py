@@ -97,24 +97,6 @@ class TestCharm(unittest.TestCase):
             source=expected_config_file_content,
         )
 
-    @patch("ops.model.Container.push")
-    @patch("ops.model.Container.pull")
-    @patch("ops.model.Container.exists")
-    def test_given_config_file_content_matches_when_database_changed_then_config_file_is_not_rewritten(  # noqa: E501
-        self,
-        patch_exists,
-        patch_pull,
-        patch_push,
-    ):
-        patch_exists.side_effect = [True, True]
-        config_file_content = read_file_content("tests/unit/expected_webui_cfg.json")
-        patch_pull.return_value = StringIO(config_file_content)
-        self.harness.set_can_connect(container="webui", val=True)
-
-        self.harness.charm._on_database_created(event=Mock(uris="1.9.11.4:1234,5.6.7.8:1111"))
-
-        patch_push.assert_not_called()
-
     @patch("ops.model.Container.exists")
     def test_given_config_file_is_written_when_pebble_ready_then_pebble_plan_is_applied(
         self,

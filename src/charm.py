@@ -55,6 +55,25 @@ class WebuiOperatorCharm(CharmBase):
             ],
         )
 
+    def _on_webui_pebble_ready(
+        self,
+        event: Union[PebbleReadyEvent, DatabaseCreatedEvent],
+    ) -> None:
+        if not self._database_relation_is_created():
+            self.unit.status = BlockedStatus("Waiting for database relation to be created")
+            return
+        if not self._container.can_connect():
+            self.unit.status = WaitingStatus("Waiting for container to be ready")
+            event.defer()
+            return
+        if not self._config_file_is_written():
+            self.unit.status = WaitingStatus("Waiting for config file to be written")
+            return
+        self._container.add_layer("webui", self._pebble_layer, combine=True)
+        self._container.replan()
+        self._container.restart(self._service_name)
+        self.unit.status = ActiveStatus()
+
     def _on_database_created(self, event: DatabaseCreatedEvent) -> None:
         """Handle database created event."""
         if not self._container.can_connect():
@@ -68,13 +87,8 @@ class WebuiOperatorCharm(CharmBase):
         config_file_content = self._render_config_file(
             database_name=DATABASE_NAME, database_url=event.uris.split(",")[0]
         )
-        if not self._config_file_is_written() or not self._config_file_content_matches(
-            content=config_file_content
-        ):
-            self._write_config_file(
-                content=config_file_content,
-            )
-        self._on_webui_pebble_ready(event)
+        self._write_config_file(content=config_file_content)
+        self._on_webui_pebble_ready(event=event)
 
     @staticmethod
     def _render_config_file(database_name: str, database_url: str) -> str:
@@ -106,33 +120,6 @@ class WebuiOperatorCharm(CharmBase):
     def _config_file_is_written(self) -> bool:
         """Returns whether the configuration file is written."""
         return bool(self._container.exists(f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}"))
-
-    def _config_file_content_matches(self, content: str) -> bool:
-        """Returns whether the config file content matches the provided content.
-
-        Returns:
-            bool: Whether the config file content matches
-        """
-        existing_content = self._container.pull(path=f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}")
-        return bool(existing_content.read() == content)
-
-    def _on_webui_pebble_ready(
-        self,
-        event: Union[PebbleReadyEvent, DatabaseCreatedEvent],
-    ) -> None:
-        if not self._database_relation_is_created():
-            self.unit.status = BlockedStatus("Waiting for database relation to be created")
-            return
-        if not self._container.can_connect():
-            self.unit.status = WaitingStatus("Waiting for container to be ready")
-            event.defer()
-            return
-        if not self._config_file_is_written():
-            self.unit.status = WaitingStatus("Waiting for config file to be written")
-            return
-        self._container.add_layer("webui", self._pebble_layer, combine=True)
-        self._container.replan()
-        self.unit.status = ActiveStatus()
 
     def _database_relation_is_created(self) -> bool:
         return self._relation_created(DATABASE_RELATION_NAME)
