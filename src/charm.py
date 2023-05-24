@@ -115,7 +115,7 @@ class WebuiOperatorCharm(CharmBase):
             content: Configuration file content
         """
         self._container.push(path=f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}", source=content)
-        logger.info(f"Pushed {CONFIG_FILE_NAME} config file")
+        logger.info("Pushed %s config file", CONFIG_FILE_NAME)
 
     def _config_file_is_written(self) -> bool:
         """Returns whether the configuration file is written."""
