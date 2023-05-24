@@ -1,0 +1,27 @@
+name: sdcore-webui
+
+display-name: SD-Core 5G WEBUI
+summary: A Charmed Operator for SD-Core's Webui component.
+description: |
+  A Charmed Operator for SD-Core's Webui component, a configuration service in SD-Core. 
+
+containers:
+  webui:
+    resource: webui-image
+    mounts:
+      - storage: config
+        location: /free5gc/config/
+
+resources:
+  webui-image:
+    type: oci-image
+    description: OCI image for 5G webui
+    upstream-source: omecproject/5gc-webui:master-1121545
+
+storage:
+  config:
+    type: filesystem
+    minimum-size: 1M
+
+assumes:
+  - k8s-api
