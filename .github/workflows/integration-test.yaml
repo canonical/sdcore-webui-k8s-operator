@@ -23,7 +23,7 @@ jobs:
         run: tox -e integration
       - name: Archive Tested Charm
         uses: actions/upload-artifact@v3
-        if: ${{ github.ref_name == 'main' }}
+#        if: ${{ github.ref_name == 'main' }}
         with:
           name: tested-charm
           path: .tox/**/sdcore-webui_ubuntu-22.04-amd64.charm
