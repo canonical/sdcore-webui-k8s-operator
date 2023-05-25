@@ -51,7 +51,7 @@ class TestCharm(unittest.TestCase):
             key_values={
                 "username": database_username,
                 "password": database_password,
-                "uris": "".join([database_url]),
+                "uris": database_url,
             },
         )
         return database_url
