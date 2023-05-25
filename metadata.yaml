@@ -10,7 +10,7 @@ containers:
     resource: webui-image
     mounts:
       - storage: config
-        location: /free5gc/config/
+        location: /etc/webui/
 
 resources:
   webui-image:
@@ -22,6 +22,10 @@ storage:
   config:
     type: filesystem
     minimum-size: 1M
+
+requires:
+  database:
+    interface: mongodb_client
 
 assumes:
   - k8s-api
