@@ -142,7 +142,7 @@ class WebuiOperatorCharm(CharmBase):
                     "webui": {
                         "override": "replace",
                         "startup": "enabled",
-                        "command": f"./webconsole/webconsole -webuicfg {BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}",  # noqa: E501
+                        "command": f"/bin/webconsole --webuicfg {BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}",  # noqa: E501
                         "environment": self._environment_variables,
                     },
                 },

@@ -112,7 +112,7 @@ class TestCharm(unittest.TestCase):
             "services": {
                 "webui": {
                     "override": "replace",
-                    "command": "./webconsole/webconsole -webuicfg /etc/webui/webuicfg.conf",
+                    "command": "/bin/webconsole --webuicfg /etc/webui/webuicfg.conf",
                     "startup": "enabled",
                     "environment": {
                         "GRPC_GO_LOG_VERBOSITY_LEVEL": "99",

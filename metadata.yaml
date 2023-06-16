@@ -16,7 +16,7 @@ resources:
   webui-image:
     type: oci-image
     description: OCI image for 5G webui
-    upstream-source: omecproject/5gc-webui:master-1121545
+    upstream-source: ghcr.io/canonical/sdcore-webui:1.3
 
 storage:
   config:
