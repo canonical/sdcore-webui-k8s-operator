@@ -8,7 +8,7 @@ This library contains the Requires and Provides classes for handling the `sdcore
 interface.
 
 The purpose of this library is to relate charms claiming
-to be able to provide or consume information on connectivity to the configuration and management service of SD-Core.
+to be able to provide or consume the information to access the configuration service in SD-Core.
 
 ## Getting Started
 From a charm directory, fetch the library using `charmcraft`:
@@ -22,7 +22,7 @@ Add the following libraries to the charm's `requirements.txt` file:
 - pytest-interface-tester
 
 ### Requirer charm
-The requirer charm is the one requiring the management service endpoint.
+The requirer charm is the one requiring the address to connect to configuration service.
 
 Example:
 ```python
@@ -31,7 +31,7 @@ from ops.charm import CharmBase
 from ops.main import main
 
 from charms.sdcore_webui.v0.sdcore_management import (
-    ManagementEndpointAddressAvailable,
+    ManagementUrlAvailable,
     SdcoreManagementRequires,
 )
 
@@ -44,13 +44,13 @@ class DummySdcoreManagementRequiresCharm(CharmBase):
         super().__init__(*args)
         self.sdcore_management = SdcoreManagementRequires(self, "sdcore-management")
         self.framework.observe(
-            self.sdcore_management.on.management_endpoint_address_available,
-            self._on_management_endpoint_address_available,
+            self.sdcore_management.on.management_url_available,
+            self._on_management_url_available,
         )
 
-    def _on_management_endpoint_available(self, event: ManagementEndpointAvailable):
-        management_endpoint_address = event.management_endpoint_address
-        <do something with the service endpoint>
+    def _on_management_url_available(self, event: ManagementUrlAvailable):
+        management_url = event.management_url
+        <do something with the url>
 
 
 if __name__ == "__main__":
@@ -58,7 +58,7 @@ if __name__ == "__main__":
 ```
 
 ### Provider charm
-The provider charm is the one providing the information about the management service endpoint.
+The provider charm is the one providing the address to connect to configuration service.
 
 Example:
 ```python
@@ -71,7 +71,7 @@ from charms.sdcore_webui.v0.sdcore_management import (
 )
 
 class DummySdcoreManagementProvidesCharm(CharmBase):
-    management_endpoint_address = "http://1.2.3.4:1234"
+    management_url = "http://1.2.3.4:1234"
 
     def __init__(self, *args):
         super().__init__(*args)
@@ -84,8 +84,8 @@ class DummySdcoreManagementProvidesCharm(CharmBase):
 
     def _on_sdcore_management_relation_joined(self, event: RelationJoinedEvent):
         if self.unit.is_leader():
-            self.sdcore_management.set_management_endpoint_address(
-                management_endpoint_address=self.management_endpoint_address,
+            self.sdcore_management.set_management_url(
+                management_url=self.management_url,
             )
 
 
@@ -123,7 +123,7 @@ Examples:
     ProviderSchema:
         unit: <empty>
         app: {
-            "management_endpoint_address": "http://1.2.3.4:1234",
+            "management_url": "http://1.2.3.4:1234",
         }
     RequirerSchema:
         unit: <empty>
@@ -134,7 +134,7 @@ Examples:
 class ProviderAppData(BaseModel):
     """Provider app data for sdcore_management."""
 
-    management_endpoint_address: AnyUrl = Field(
+    management_url: AnyUrl = Field(
         description="The endpoint to use to manage SD-Core network.",
         examples=["http://1.2.3.4:1234"]
     )
@@ -162,29 +162,29 @@ def data_is_valid(data: dict) -> bool:
         return False
 
 
-class ManagementEndpointAddressAvailable(EventBase):
-    """Charm event emitted when the management endpoint address is available."""
+class ManagementUrlAvailable(EventBase):
+    """Charm event emitted when the management url is available."""
 
-    def __init__(self, handle: Handle, management_endpoint_address: str):
+    def __init__(self, handle: Handle, management_url: str):
         """Init."""
         super().__init__(handle)
-        self.management_endpoint_address = management_endpoint_address
+        self.management_url = management_url
 
     def snapshot(self) -> dict:
         """Returns snapshot."""
         return {
-            "management_endpoint_address": self.management_endpoint_address,
+            "management_url": self.management_url,
         }
 
     def restore(self, snapshot: dict) -> None:
         """Restores snapshot."""
-        self.management_endpoint_address = snapshot["management_endpoint_address"]
+        self.management_url = snapshot["management_url"]
 
 
 class SdcoreManagementRequirerCharmEvents(CharmEvents):
     """List of events that the SD-Core management requirer charm can leverage."""
 
-    management_endpoint_address_available = EventSource(ManagementEndpointAddressAvailable)
+    management_url_available = EventSource(ManagementUrlAvailable)
 
 
 class SdcoreManagementRequires(Object):
@@ -209,19 +209,19 @@ class SdcoreManagementRequires(Object):
             None
         """
         if remote_app_relation_data := self._get_remote_app_relation_data(event.relation):
-            self.on.management_endpoint_address_available.emit(
-                management_endpoint_address=remote_app_relation_data["management_endpoint_address"],
+            self.on.management_url_available.emit(
+                management_url=remote_app_relation_data["management_url"],
             )
 
     @property
-    def management_endpoint_address(self) -> Optional[str]:
+    def management_url(self) -> Optional[str]:
         """Returns the address of the management endpoint.
 
         Returns:
             str: Endpoint address.
         """
         if remote_app_relation_data := self._get_remote_app_relation_data():
-            return remote_app_relation_data.get("management_endpoint_address")
+            return remote_app_relation_data.get("management_url")
         return None
 
     def _get_remote_app_relation_data(
@@ -251,7 +251,7 @@ class SdcoreManagementRequires(Object):
 
 
 class SdcoreManagementProvides(Object):
-    """Class to be instantiated by the charm providing the SD-Core management endpoint address."""
+    """Class to be instantiated by the charm providing the SD-Core management url."""
 
     def __init__(self, charm: CharmBase, relation_name: str):
         """Init."""
@@ -259,11 +259,11 @@ class SdcoreManagementProvides(Object):
         self.relation_name = relation_name
         self.charm = charm
 
-    def set_management_endpoint_address(self, management_endpoint_address: str) -> None:
+    def set_management_url(self, management_url: str) -> None:
         """Sets the address of the management endpoint.
 
         Args:
-            management_endpoint_address (str): Endpoint address.
+            management_url (str): Configuration service address.
 
         Returns:
             None
@@ -274,12 +274,12 @@ class SdcoreManagementProvides(Object):
         if not relations:
             raise RuntimeError(f"Relation {self.relation_name} not created yet.")
         if not data_is_valid(
-            {"management_endpoint_address": management_endpoint_address}
+            {"management_url": management_url}
         ):
             raise ValueError("Invalid relation data")
         for relation in relations:
             relation.data[self.charm.app].update(
                 {
-                    "management_endpoint_address": management_endpoint_address
+                    "management_url": management_url
                 }
             )

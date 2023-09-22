@@ -9,7 +9,7 @@ from ops import testing
 from ops.charm import CharmBase
 
 from lib.charms.sdcore_webui.v0.sdcore_management import (
-    ManagementEndpointAddressAvailable,
+    ManagementUrlAvailable,
     SdcoreManagementRequires,
 )
 
@@ -36,12 +36,12 @@ class DummySdcoreManagementRequires(CharmBase):
         super().__init__(*args)
         self.sdcore_management_requirer = SdcoreManagementRequires(self, "sdcore-management")
         self.framework.observe(
-            self.sdcore_management_requirer.on.management_endpoint_address_available,
-            self._on_management_endpoint_address_available,
+            self.sdcore_management_requirer.on.management_url_available,
+            self._on_management_url_available,
         )
 
-    def _on_management_endpoint_address_available(self, event: ManagementEndpointAddressAvailable):
-        logger.info("sdcore-webui endpoint address: %s", event.management_endpoint_address)
+    def _on_management_url_available(self, event: ManagementUrlAvailable):
+        logger.info("sdcore-webui endpoint address: %s", event.management_url)
 
 
 class TestSdcoreManagementRequirer(unittest.TestCase):
@@ -64,33 +64,33 @@ class TestSdcoreManagementRequirer(unittest.TestCase):
         return relation_id
 
     @patch(
-        f"{CHARM_LIB_PATH}.SdcoreManagementRequirerCharmEvents.management_endpoint_address_available",  # noqa: E501
+        f"{CHARM_LIB_PATH}.SdcoreManagementRequirerCharmEvents.management_url_available",  # noqa: E501
     )
-    def test_given_management_endpoint_address_in_relation_data_when_relation_changed_then_management_endpoint_address_available_event_emitted(  # noqa: E501
+    def test_given_management_url_in_relation_data_when_relation_changed_then_management_url_available_event_emitted(  # noqa: E501
         self,
-        patch_endpoint_address_available,
+        patch_url_available,
     ):
         relation_id = self._create_relation(remote_app_name=self.remote_app_name)
 
         relation_data = {
-            "management_endpoint_address": "http://1.2.3.4:1234",
+            "management_url": "http://1.2.3.4:1234",
         }
         self.harness.update_relation_data(
             relation_id=relation_id, app_or_unit=self.remote_app_name, key_values=relation_data
         )
         calls = [
             call.emit(
-                management_endpoint_address="http://1.2.3.4:1234",
+                management_url="http://1.2.3.4:1234",
             ),
         ]
-        patch_endpoint_address_available.assert_has_calls(calls, any_order=True)
+        patch_url_available.assert_has_calls(calls, any_order=True)
 
     @patch(
-        f"{CHARM_LIB_PATH}.SdcoreManagementRequirerCharmEvents.management_endpoint_address_available",  # noqa: E501
+        f"{CHARM_LIB_PATH}.SdcoreManagementRequirerCharmEvents.management_url_available",  # noqa: E501
     )
-    def test_given_management_endpoint_address_not_in_relation_data_when_relation_changed_then_management_endpoint_address_available_event_not_emitted(  # noqa: E501
+    def test_given_management_url_not_in_relation_data_when_relation_changed_then_management_url_available_event_not_emitted(  # noqa: E501
         self,
-        patch_endpoint_address_available,
+        patch_url_available,
     ):
         relation_id = self._create_relation(remote_app_name=self.remote_app_name)
 
@@ -98,59 +98,55 @@ class TestSdcoreManagementRequirer(unittest.TestCase):
         self.harness.update_relation_data(
             relation_id=relation_id, app_or_unit=self.remote_app_name, key_values=relation_data
         )
-        patch_endpoint_address_available.assert_not_called()
+        patch_url_available.assert_not_called()
 
     @patch(
-        f"{CHARM_LIB_PATH}.SdcoreManagementRequirerCharmEvents.management_endpoint_address_available",  # noqa: E501
+        f"{CHARM_LIB_PATH}.SdcoreManagementRequirerCharmEvents.management_url_available",  # noqa: E501
     )
-    def test_given_management_endpoint_address_not_valid_in_relation_data_when_relation_changed_then_management_endpoint_address_available_event_not_emitted(  # noqa: E501
+    def test_given_management_url_not_valid_in_relation_data_when_relation_changed_then_management_url_available_event_not_emitted(  # noqa: E501
         self,
-        patch_endpoint_address_available,
+        patch_url_available,
     ):
         relation_id = self._create_relation(remote_app_name=self.remote_app_name)
 
         relation_data = {
-            "management_endpoint_address": "invalid url",
+            "management_url": "invalid url",
         }
         self.harness.update_relation_data(
             relation_id=relation_id, app_or_unit=self.remote_app_name, key_values=relation_data
         )
-        patch_endpoint_address_available.assert_not_called()
+        patch_url_available.assert_not_called()
 
-    def test_given_management_endpoint_address_in_relation_data_when_get_management_endpoint_address_then_address_is_returned(  # noqa: E501
-        self,
-    ):
-        relation_id = self._create_relation(remote_app_name=self.remote_app_name)
-
-        relation_data = {
-            "management_endpoint_address": "http://1.2.3.4:1234",
-        }
-        self.harness.update_relation_data(
-            relation_id=relation_id, app_or_unit=self.remote_app_name, key_values=relation_data
-        )
-        management_endpoint_address = (
-            self.harness.charm.sdcore_management_requirer.management_endpoint_address
-        )  # noqa: E501
-        self.assertEqual(management_endpoint_address, "http://1.2.3.4:1234")
-
-    def test_given_management_endpoint_address_changed_in_relation_data_when_get_management_endpoint_address_then_new_address_is_returned(  # noqa: E501
+    def test_given_management_url_in_relation_data_when_get_management_url_then_address_is_returned(  # noqa: E501
         self,
     ):
         relation_id = self._create_relation(remote_app_name=self.remote_app_name)
 
         relation_data = {
-            "management_endpoint_address": "http://1.2.3.4:1234",
+            "management_url": "http://1.2.3.4:1234",
+        }
+        self.harness.update_relation_data(
+            relation_id=relation_id, app_or_unit=self.remote_app_name, key_values=relation_data
+        )
+        management_url = self.harness.charm.sdcore_management_requirer.management_url
+        self.assertEqual(management_url, "http://1.2.3.4:1234")
+
+    def test_given_management_url_changed_in_relation_data_when_get_management_url_then_new_address_is_returned(  # noqa: E501
+        self,
+    ):
+        relation_id = self._create_relation(remote_app_name=self.remote_app_name)
+
+        relation_data = {
+            "management_url": "http://1.2.3.4:1234",
         }
         self.harness.update_relation_data(
             relation_id=relation_id, app_or_unit=self.remote_app_name, key_values=relation_data
         )
         relation_data = {
-            "management_endpoint_address": "http://different.endpoint:1234",
+            "management_url": "http://different.endpoint:1234",
         }
         self.harness.update_relation_data(
             relation_id=relation_id, app_or_unit=self.remote_app_name, key_values=relation_data
         )
-        management_endpoint_address = (
-            self.harness.charm.sdcore_management_requirer.management_endpoint_address
-        )  # noqa: E501
-        self.assertEqual(management_endpoint_address, "http://different.endpoint:1234")
+        management_url = self.harness.charm.sdcore_management_requirer.management_url
+        self.assertEqual(management_url, "http://different.endpoint:1234")

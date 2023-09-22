@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class DummySdcoreManagementProvides(CharmBase):
     """Dummy charm implementing the provider side of the sdcore_management interface."""
 
-    ENDPOINT_ADDRESS = "http://1.2.3.4:1234"
+    MANAGEMENT_URL = "http://1.2.3.4:1234"
 
     def __init__(self, *args):
         super().__init__(*args)
@@ -39,8 +39,8 @@ class DummySdcoreManagementProvides(CharmBase):
 
     def _on_sdcore_management_relation_joined(self, event: RelationJoinedEvent):
         if self.unit.is_leader():
-            self.sdcore_management_provider.set_management_endpoint_address(
-                management_endpoint_address=self.ENDPOINT_ADDRESS,
+            self.sdcore_management_provider.set_management_url(
+                management_url=self.MANAGEMENT_URL,
             )
 
 
@@ -67,7 +67,7 @@ class TestSdcoreManagementProvider(unittest.TestCase):
         self,
     ):
         self.harness.set_leader(is_leader=True)
-        expected_management_endpoint_address = "http://1.2.3.4:1234"
+        expected_management_url = "http://1.2.3.4:1234"
 
         relation_id = self._create_relation(remote_app_name=self.remote_app_name)
 
@@ -75,8 +75,8 @@ class TestSdcoreManagementProvider(unittest.TestCase):
             relation_id=relation_id, app_or_unit=self.harness.charm.app.name
         )
         self.assertEqual(
-            relation_data["management_endpoint_address"],
-            expected_management_endpoint_address,
+            relation_data["management_url"],
+            expected_management_url,
         )
 
     def test_given_unit_is_not_leader_when_sdcore_management_relation_joined_then_data_is_not_in_application_databag(  # noqa: E501
@@ -96,7 +96,7 @@ class TestSdcoreManagementProvider(unittest.TestCase):
     ):
         self.harness.set_leader(is_leader=True)
         with patch.object(
-            DummySdcoreManagementProvides, "ENDPOINT_ADDRESS", new_callable=PropertyMock
+            DummySdcoreManagementProvides, "MANAGEMENT_URL", new_callable=PropertyMock
         ) as patched_address:
             patched_address.return_value = "invalid address"
             with pytest.raises(ValueError):
