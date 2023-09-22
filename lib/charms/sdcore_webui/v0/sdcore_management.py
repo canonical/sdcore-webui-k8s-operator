@@ -102,7 +102,7 @@ from interface_tester.schema_base import DataBagSchema  # type: ignore[import]
 from ops.charm import CharmBase, CharmEvents, RelationChangedEvent
 from ops.framework import EventBase, EventSource, Handle, Object
 from ops.model import Relation
-from pydantic import BaseModel, Field, AnyUrl, ValidationError
+from pydantic import BaseModel, Field, HttpUrl, ValidationError
 
 # The unique Charmhub library identifier, never change it
 LIBID = "e879ede87229469981725ef404973ee5"
@@ -131,10 +131,10 @@ Examples:
 """
 
 
-class ProviderAppData(BaseModel):
+class SdcoreManagementProviderAppData(BaseModel):
     """Provider app data for sdcore_management."""
 
-    management_url: AnyUrl = Field(
+    management_url: HttpUrl = Field(
         description="The endpoint to use to manage SD-Core network.",
         examples=["http://1.2.3.4:1234"]
     )
@@ -142,7 +142,7 @@ class ProviderAppData(BaseModel):
 class ProviderSchema(DataBagSchema):
     """Provider schema for sdcore_management."""
 
-    app: ProviderAppData
+    app: SdcoreManagementProviderAppData
 
 
 def data_is_valid(data: dict) -> bool:
