@@ -64,7 +64,7 @@ class TestSdcoreManagementRequirer(unittest.TestCase):
         return relation_id
 
     @patch(
-        f"{CHARM_LIB_PATH}.SdcoreManagementRequirerCharmEvents.management_url_available",  # noqa: E501
+        f"{CHARM_LIB_PATH}.SdcoreManagementRequirerCharmEvents.management_url_available",
     )
     def test_given_management_url_in_relation_data_when_relation_changed_then_management_url_available_event_emitted(  # noqa: E501
         self,
@@ -86,7 +86,7 @@ class TestSdcoreManagementRequirer(unittest.TestCase):
         patch_url_available.assert_has_calls(calls, any_order=True)
 
     @patch(
-        f"{CHARM_LIB_PATH}.SdcoreManagementRequirerCharmEvents.management_url_available",  # noqa: E501
+        f"{CHARM_LIB_PATH}.SdcoreManagementRequirerCharmEvents.management_url_available",
     )
     def test_given_management_url_not_in_relation_data_when_relation_changed_then_management_url_available_event_not_emitted(  # noqa: E501
         self,
@@ -101,7 +101,7 @@ class TestSdcoreManagementRequirer(unittest.TestCase):
         patch_url_available.assert_not_called()
 
     @patch(
-        f"{CHARM_LIB_PATH}.SdcoreManagementRequirerCharmEvents.management_url_available",  # noqa: E501
+        f"{CHARM_LIB_PATH}.SdcoreManagementRequirerCharmEvents.management_url_available",
     )
     def test_given_management_url_not_valid_in_relation_data_when_relation_changed_then_management_url_available_event_not_emitted(  # noqa: E501
         self,
