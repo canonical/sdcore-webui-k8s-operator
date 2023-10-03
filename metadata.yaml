@@ -3,7 +3,10 @@ name: sdcore-webui
 display-name: SD-Core 5G WEBUI
 summary: A Charmed Operator for SD-Core's Webui component.
 description: |
-  A Charmed Operator for SD-Core's Webui component, a configuration service in SD-Core. 
+  A Charmed Operator for SD-Core's Webui component, a configuration service in SD-Core.
+website: https://charmhub.io/sdcore-webui
+source: https://github.com/canonical/sdcore-webui-operator
+issues: https://github.com/canonical/sdcore-webui-operator/issues
 
 containers:
   webui:
