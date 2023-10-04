@@ -27,5 +27,9 @@ requires:
   database:
     interface: mongodb_client
 
+provides:
+  sdcore-management:
+    interface: sdcore_management
+
 assumes:
   - k8s-api
