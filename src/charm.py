@@ -44,7 +44,6 @@ def _get_pod_ip() -> Optional[str]:
     """
     try:
         ip_address = check_output(["unit-get", "private-address"])
-        print(ip_address)
         return str(IPv4Address(ip_address.decode().strip())) if ip_address else None
     except (CalledProcessError, ValueError):
         return None
@@ -144,7 +143,7 @@ class WebuiOperatorCharm(CharmBase):
         self._on_webui_pebble_ready(event=event)
 
     def _publish_sdcore_management_url(self, event: EventBase):
-        """Handles sdcore management relation joined event.
+        """Sets the webui url in the sdcore management relation.
 
         Passes the url of webui to sdcore management relation.
 
@@ -194,7 +193,7 @@ class WebuiOperatorCharm(CharmBase):
             str: The webui endpoint url.
         """
         if not _get_pod_ip():
-            return ""
+            return None
         return f"http://{_get_pod_ip()}:{WEBUI_URL_PORT}"
 
     @property
