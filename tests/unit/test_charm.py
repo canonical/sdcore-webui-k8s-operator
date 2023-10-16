@@ -34,6 +34,7 @@ class TestCharm(unittest.TestCase):
         self.namespace = "whatever"
         self.harness = testing.Harness(WebuiOperatorCharm)
         self.harness.set_model_name(name=self.namespace)
+        self.harness.set_leader(is_leader=True)
         self.addCleanup(self.harness.cleanup)
         self.harness.begin()
 
@@ -168,4 +169,34 @@ class TestCharm(unittest.TestCase):
 
         self.assertEqual(
             self.harness.model.unit.status, WaitingStatus("Waiting for storage to be attached")
+        )
+
+    @patch("charm.check_output")
+    @patch("charms.sdcore_webui.v0.sdcore_management.SdcoreManagementProvides.set_management_url")
+    def test_given_webui_url_not_available_when_sdcore_management_relation_joined_then_url_not_set(  # noqa: E501
+        self,
+        patch_set_management_url,
+        patch_check_output,
+    ):
+        patch_check_output.return_value = ""
+        sdcore_management_relation = self.harness.add_relation("sdcore-management", "requirer")
+        self.harness.add_relation_unit(
+            relation_id=sdcore_management_relation, remote_unit_name="requirer/0"
+        )
+        patch_set_management_url.assert_not_called()
+
+    @patch("charm.check_output")
+    @patch("charms.sdcore_webui.v0.sdcore_management.SdcoreManagementProvides.set_management_url")
+    def test_given_webui_url_available_when_sdcore_management_relation_joined_then_url_is_passed_in_relation(  # noqa: E501
+        self,
+        patch_set_management_url,
+        patch_check_output,
+    ):
+        patch_check_output.return_value = b"10.0.0.1"
+        sdcore_management_relation = self.harness.add_relation("sdcore-management", "requirer")
+        self.harness.add_relation_unit(
+            relation_id=sdcore_management_relation, remote_unit_name="requirer/0"
+        )
+        patch_set_management_url.assert_called_once_with(
+            management_url="http://10.0.0.1:5000",
         )

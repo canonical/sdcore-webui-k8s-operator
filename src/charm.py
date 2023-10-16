@@ -5,6 +5,9 @@
 """Charmed operator for the 5G Webui service."""
 
 import logging
+from ipaddress import IPv4Address
+from subprocess import CalledProcessError, check_output
+from typing import Optional
 
 from charms.data_platform_libs.v0.data_interfaces import (  # type: ignore[import]
     DatabaseCreatedEvent,
@@ -12,6 +15,9 @@ from charms.data_platform_libs.v0.data_interfaces import (  # type: ignore[impor
 )
 from charms.observability_libs.v1.kubernetes_service_patch import (  # type: ignore[import]
     KubernetesServicePatch,
+)
+from charms.sdcore_webui.v0.sdcore_management import (  # type: ignore[import]
+    SdcoreManagementProvides,
 )
 from jinja2 import Environment, FileSystemLoader
 from lightkube.models.core_v1 import ServicePort
@@ -26,6 +32,21 @@ BASE_CONFIG_PATH = "/etc/webui"
 CONFIG_FILE_NAME = "webuicfg.conf"
 DATABASE_RELATION_NAME = "database"
 DATABASE_NAME = "free5gc"
+SDCORE_MANAGEMENT_RELATION_NAME = "sdcore-management"
+WEBUI_URL_PORT = 5000
+
+
+def _get_pod_ip() -> Optional[str]:
+    """Returns the pod IP using juju client.
+
+    Returns:
+        str: The pod IP.
+    """
+    try:
+        ip_address = check_output(["unit-get", "private-address"])
+        return str(IPv4Address(ip_address.decode().strip())) if ip_address else None
+    except (CalledProcessError, ValueError):
+        return None
 
 
 def render_config_file(database_name: str, database_url: str) -> str:
@@ -67,21 +88,31 @@ class WebuiOperatorCharm(CharmBase):
             database_name=DATABASE_NAME,
             extra_user_roles="admin",
         )
+        self._sdcore_management = SdcoreManagementProvides(self, SDCORE_MANAGEMENT_RELATION_NAME)
         self.framework.observe(self.on.webui_pebble_ready, self._on_webui_pebble_ready)
         self.framework.observe(self.on.database_relation_joined, self._on_webui_pebble_ready)
         self.framework.observe(self._database.on.database_created, self._on_database_created)
         self.framework.observe(self._database.on.endpoints_changed, self._on_database_created)
+        self.framework.observe(
+            self.on.sdcore_management_relation_joined, self._publish_sdcore_management_url
+        )
+        # Handling config changed event to publish the new url if the unit reboots and gets new IP
+        self.framework.observe(self.on.config_changed, self._publish_sdcore_management_url)
         self._service_patcher = KubernetesServicePatch(
             charm=self,
             service_name="webui",
             ports=[
-                ServicePort(name="urlport-http", port=5000),
+                ServicePort(name="urlport-http", port=WEBUI_URL_PORT),
                 ServicePort(name="grpc", port=9876),
             ],
         )
 
     def _on_webui_pebble_ready(self, event: EventBase) -> None:
-        """Handles pebble ready event."""
+        """Handles pebble ready event.
+
+        Args:
+            event (EventBase): Juju event.
+        """
         if not self._database_relation_is_created():
             self.unit.status = BlockedStatus("Waiting for database relation to be created")
             return
@@ -98,7 +129,11 @@ class WebuiOperatorCharm(CharmBase):
         self.unit.status = ActiveStatus()
 
     def _on_database_created(self, event: DatabaseCreatedEvent) -> None:
-        """Handle database created event."""
+        """Handle database created event.
+
+        Args:
+            event (DatabaseCreatedEvent): Juju event.
+        """
         if not self._container.can_connect():
             self.unit.status = WaitingStatus("Waiting for container to be ready")
             event.defer()
@@ -112,6 +147,23 @@ class WebuiOperatorCharm(CharmBase):
         )
         self._write_config_file(content=config_file_content)
         self._on_webui_pebble_ready(event=event)
+
+    def _publish_sdcore_management_url(self, event: EventBase):
+        """Sets the webui url in the sdcore management relation.
+
+        Passes the url of webui to sdcore management relation.
+
+        Args:
+            event (EventBase): Juju event.
+        """
+        if not self._relation_created(SDCORE_MANAGEMENT_RELATION_NAME):
+            return
+        if not self._get_webui_endpoint_url():
+            event.defer()
+            return
+        self._sdcore_management.set_management_url(
+            management_url=self._get_webui_endpoint_url(),
+        )
 
     def _write_config_file(self, content: str) -> None:
         """Writes configuration file based on provided content.
@@ -136,9 +188,19 @@ class WebuiOperatorCharm(CharmBase):
             relation_name (str): Relation name
 
         Returns:
-            str: Whether the relation was created.
+            bool: Whether the relation was created.
         """
         return bool(self.model.get_relation(relation_name))
+
+    def _get_webui_endpoint_url(self) -> Optional[str]:
+        """Returns the webui endpoint url.
+
+        Returns:
+            str: The webui endpoint url.
+        """
+        if not _get_pod_ip():
+            return None
+        return f"http://{_get_pod_ip()}:{WEBUI_URL_PORT}"
 
     @property
     def _pebble_layer(self) -> Layer:
