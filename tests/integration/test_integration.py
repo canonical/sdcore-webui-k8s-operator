@@ -80,7 +80,7 @@ async def test_when_scale_app_beyond_1_then_only_one_unit_is_active(
     assert ops_test.model
     assert isinstance(app := ops_test.model.applications[APP_NAME], Application)
     await app.scale(3)
-    await ops_test.model.wait_for_idle(apps=[APP_NAME], timeout=1000)
+    await ops_test.model.wait_for_idle(apps=[APP_NAME], timeout=1000, wait_for_at_least_units=3)
     unit_statuses = Counter(unit.workload_status for unit in app.units)
     assert unit_statuses.get("active") == 1
     assert unit_statuses.get("blocked") == 2
