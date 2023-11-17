@@ -91,6 +91,7 @@ class WebuiOperatorCharm(CharmBase):
         self._sdcore_management = SdcoreManagementProvides(self, SDCORE_MANAGEMENT_RELATION_NAME)
         self.framework.observe(self.on.webui_pebble_ready, self._on_webui_pebble_ready)
         self.framework.observe(self.on.database_relation_joined, self._on_webui_pebble_ready)
+        self.framework.observe(self.on.database_relation_broken, self._on_database_relation_broken)
         self.framework.observe(self._database.on.database_created, self._on_database_created)
         self.framework.observe(self._database.on.endpoints_changed, self._on_database_created)
         self.framework.observe(
@@ -164,6 +165,14 @@ class WebuiOperatorCharm(CharmBase):
         self._sdcore_management.set_management_url(
             management_url=self._get_webui_endpoint_url(),
         )
+
+    def _on_database_relation_broken(self, event: EventBase) -> None:
+        """Event handler for database relation broken.
+
+        Args:
+            event: Juju event
+        """
+        self.unit.status = BlockedStatus("Waiting for database relation")
 
     def _write_config_file(self, content: str) -> None:
         """Writes configuration file based on provided content.
