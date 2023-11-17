@@ -6,7 +6,7 @@ from io import StringIO
 from unittest.mock import Mock, patch
 
 from ops import testing
-from ops.model import ActiveStatus, WaitingStatus
+from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 
 from charm import WebuiOperatorCharm
 
@@ -38,7 +38,7 @@ class TestCharm(unittest.TestCase):
         self.addCleanup(self.harness.cleanup)
         self.harness.begin()
 
-    def _database_is_available(self) -> str:
+    def _create_database_relation_and_populate_data(self) -> int:
         database_url = "http://6.6.6.6"
         database_username = "banana"
         database_password = "pizza"
@@ -55,7 +55,17 @@ class TestCharm(unittest.TestCase):
                 "uris": database_url,
             },
         )
-        return database_url
+        return database_relation_id
+
+    def test_given_database_relation_not_created_when_pebble_ready_then_status_is_blocked(
+        self,
+    ):
+        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.container_pebble_ready("webui")
+        self.assertEqual(
+            self.harness.model.unit.status,
+            BlockedStatus("Waiting for database relation to be created"),
+        )
 
     @patch("ops.model.Container.push")
     @patch("ops.model.Container.exists")
@@ -105,7 +115,7 @@ class TestCharm(unittest.TestCase):
     ):
         patch_exists.return_value = True
 
-        self._database_is_available()
+        self._create_database_relation_and_populate_data()
 
         self.harness.container_pebble_ready(container_name="webui")
 
@@ -136,11 +146,25 @@ class TestCharm(unittest.TestCase):
     ):
         patch_exists.return_value = True
 
-        self._database_is_available()
+        self._create_database_relation_and_populate_data()
 
         self.harness.container_pebble_ready("webui")
 
         self.assertEqual(self.harness.model.unit.status, ActiveStatus())
+
+    @patch("ops.model.Container.exists")
+    def test_given_webui_charm_in_active_state_when_database_relation_breaks_then_status_is_blocked(  # noqa: E501
+        self, patch_exists
+    ):
+        patch_exists.return_value = True
+        database_relation_id = self._create_database_relation_and_populate_data()
+        self.harness.container_pebble_ready("webui")
+
+        self.harness.remove_relation(database_relation_id)
+
+        self.assertEqual(
+            self.harness.model.unit.status, BlockedStatus("Waiting for database relation")
+        )
 
     @patch("ops.model.Container.exists")
     def test_given_config_file_is_not_written_when_pebble_ready_then_status_is_waiting(
@@ -148,7 +172,7 @@ class TestCharm(unittest.TestCase):
     ):
         patch_exists.return_value = False
 
-        self._database_is_available()
+        self._create_database_relation_and_populate_data()
 
         self.harness.container_pebble_ready("webui")
 
