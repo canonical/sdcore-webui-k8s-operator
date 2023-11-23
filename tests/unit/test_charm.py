@@ -2,7 +2,6 @@
 # See LICENSE file for licensing details.
 
 import unittest
-from io import StringIO
 from unittest.mock import Mock, patch
 
 from ops import testing
@@ -67,53 +66,41 @@ class TestCharm(unittest.TestCase):
             BlockedStatus("Waiting for database relation to be created"),
         )
 
-    @patch("ops.model.Container.push")
-    @patch("ops.model.Container.exists")
     def test_given_config_file_not_written_when_database_is_created_then_config_file_is_written(
         self,
-        patch_exists,
-        patch_push,
     ):
-        patch_exists.side_effect = [True, False]
+        self.harness.add_storage("config", attach=True)
+        root = self.harness.get_filesystem_root("webui")
         self.harness.set_can_connect(container="webui", val=True)
 
         self.harness.charm._on_database_created(event=Mock(uris="1.9.11.4:1234,5.6.7.8:1111"))
 
         expected_config_file_content = read_file_content("tests/unit/expected_webui_cfg.json")
 
-        patch_push.assert_called_with(
-            path="/etc/webui/webuicfg.conf",
-            source=expected_config_file_content,
+        self.assertEqual(
+            (root / "etc/webui/webuicfg.conf").read_text(), expected_config_file_content
         )
 
-    @patch("ops.model.Container.push")
-    @patch("ops.model.Container.pull")
-    @patch("ops.model.Container.exists")
     def test_given_config_file_content_doesnt_match_when_database_changed_then_content_is_updated(
         self,
-        patch_exists,
-        patch_pull,
-        patch_push,
     ):
-        patch_exists.side_effect = [True, True]
-        patch_pull.return_value = StringIO("Obviously different content")
+        self.harness.add_storage("config", attach=True)
+        root = self.harness.get_filesystem_root("webui")
+        (root / "etc/webui/webuicfg.conf").write_text("Obviously different content")
         self.harness.set_can_connect(container="webui", val=True)
 
         self.harness.charm._on_database_created(event=Mock(uris="1.9.11.4:1234,5.6.7.8:1111"))
 
         expected_config_file_content = read_file_content("tests/unit/expected_webui_cfg.json")
 
-        patch_push.assert_called_with(
-            path="/etc/webui/webuicfg.conf",
-            source=expected_config_file_content,
+        self.assertEqual(
+            (root / "etc/webui/webuicfg.conf").read_text(), expected_config_file_content
         )
 
-    @patch("ops.model.Container.exists")
-    def test_given_config_file_is_written_when_pebble_ready_then_pebble_plan_is_applied(
-        self,
-        patch_exists,
-    ):
-        patch_exists.return_value = True
+    def test_given_config_file_is_written_when_pebble_ready_then_pebble_plan_is_applied(self):
+        self.harness.add_storage("config", attach=True)
+        root = self.harness.get_filesystem_root("webui")
+        (root / "etc/webui/webuicfg.conf").write_text("Obviously different content")
 
         self._create_database_relation_and_populate_data()
 
@@ -140,11 +127,10 @@ class TestCharm(unittest.TestCase):
 
         self.assertEqual(expected_plan, updated_plan)
 
-    @patch("ops.model.Container.exists")
-    def test_given_config_file_is_written_when_pebble_ready_then_status_is_active(
-        self, patch_exists
-    ):
-        patch_exists.return_value = True
+    def test_given_config_file_is_written_when_pebble_ready_then_status_is_active(self):
+        self.harness.add_storage("config", attach=True)
+        root = self.harness.get_filesystem_root("webui")
+        (root / "etc/webui/webuicfg.conf").write_text("Obviously different content")
 
         self._create_database_relation_and_populate_data()
 
@@ -152,11 +138,12 @@ class TestCharm(unittest.TestCase):
 
         self.assertEqual(self.harness.model.unit.status, ActiveStatus())
 
-    @patch("ops.model.Container.exists")
     def test_given_webui_charm_in_active_state_when_database_relation_breaks_then_status_is_blocked(  # noqa: E501
-        self, patch_exists
+        self,
     ):
-        patch_exists.return_value = True
+        self.harness.add_storage("config", attach=True)
+        root = self.harness.get_filesystem_root("webui")
+        (root / "etc/webui/webuicfg.conf").write_text("Obviously different content")
         database_relation_id = self._create_database_relation_and_populate_data()
         self.harness.container_pebble_ready("webui")
 
@@ -166,11 +153,8 @@ class TestCharm(unittest.TestCase):
             self.harness.model.unit.status, BlockedStatus("Waiting for database relation")
         )
 
-    @patch("ops.model.Container.exists")
-    def test_given_config_file_is_not_written_when_pebble_ready_then_status_is_waiting(
-        self, patch_exists
-    ):
-        patch_exists.return_value = False
+    def test_given_config_file_is_not_written_when_pebble_ready_then_status_is_waiting(self):
+        self.harness.add_storage("config", attach=True)
 
         self._create_database_relation_and_populate_data()
 
@@ -181,12 +165,7 @@ class TestCharm(unittest.TestCase):
             WaitingStatus("Waiting for config file to be written"),
         )
 
-    @patch("ops.model.Container.exists")
-    def test_given_storage_not_attached_when_on_database_created_then_status_is_waiting(
-        self,
-        patch_exists,
-    ):
-        patch_exists.return_value = False
+    def test_given_storage_not_attached_when_on_database_created_then_status_is_waiting(self):
         self.harness.set_can_connect(container="webui", val=True)
 
         self.harness.charm._on_database_created(event=Mock(uris="1.9.11.4:1234,5.6.7.8:1111"))
