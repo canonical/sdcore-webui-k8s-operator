@@ -13,14 +13,10 @@ from charms.data_platform_libs.v0.data_interfaces import (  # type: ignore[impor
     DatabaseCreatedEvent,
     DatabaseRequires,
 )
-from charms.observability_libs.v1.kubernetes_service_patch import (  # type: ignore[import]
-    KubernetesServicePatch,
-)
 from charms.sdcore_webui.v0.sdcore_management import (  # type: ignore[import]
     SdcoreManagementProvides,
 )
 from jinja2 import Environment, FileSystemLoader
-from lightkube.models.core_v1 import ServicePort
 from ops.charm import CharmBase, EventBase
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
@@ -33,6 +29,7 @@ CONFIG_FILE_NAME = "webuicfg.conf"
 DATABASE_RELATION_NAME = "database"
 DATABASE_NAME = "free5gc"
 SDCORE_MANAGEMENT_RELATION_NAME = "sdcore-management"
+GRPC_PORT = 9876
 WEBUI_URL_PORT = 5000
 
 
@@ -89,6 +86,8 @@ class WebuiOperatorCharm(CharmBase):
             extra_user_roles="admin",
         )
         self._sdcore_management = SdcoreManagementProvides(self, SDCORE_MANAGEMENT_RELATION_NAME)
+        self.unit.set_ports(GRPC_PORT, WEBUI_URL_PORT)
+
         self.framework.observe(self.on.webui_pebble_ready, self._on_webui_pebble_ready)
         self.framework.observe(self.on.database_relation_joined, self._on_webui_pebble_ready)
         self.framework.observe(self.on.database_relation_broken, self._on_database_relation_broken)
@@ -99,14 +98,6 @@ class WebuiOperatorCharm(CharmBase):
         )
         # Handling config changed event to publish the new url if the unit reboots and gets new IP
         self.framework.observe(self.on.config_changed, self._publish_sdcore_management_url)
-        self._service_patcher = KubernetesServicePatch(
-            charm=self,
-            service_name="webui",
-            ports=[
-                ServicePort(name="urlport-http", port=WEBUI_URL_PORT),
-                ServicePort(name="grpc", port=9876),
-            ],
-        )
 
     def _on_webui_pebble_ready(self, event: EventBase) -> None:
         """Handles pebble ready event.

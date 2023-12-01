@@ -25,10 +25,6 @@ def read_file_content(path: str) -> str:
 
 
 class TestCharm(unittest.TestCase):
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda charm, service_name, ports: None,
-    )
     def setUp(self):
         self.namespace = "whatever"
         self.harness = testing.Harness(WebuiOperatorCharm)
