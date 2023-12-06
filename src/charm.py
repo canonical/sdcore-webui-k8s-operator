@@ -2,7 +2,7 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""Charmed operator for the 5G Webui service."""
+"""Charmed operator for the 5G Webui service for K8s."""
 
 import logging
 from ipaddress import IPv4Address
