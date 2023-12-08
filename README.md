@@ -1,4 +1,4 @@
-# SD-Core Webui Operator for K8s
+# SD-Core Webui Operator (k8s)
 [![CharmHub Badge](https://charmhub.io/sdcore-webui-k8s/badge.svg)](https://charmhub.io/sdcore-webui-k8s)
 
 A Charmed Operator for SD-Core's Webui component for K8s, a configuration service in SD-Core. 

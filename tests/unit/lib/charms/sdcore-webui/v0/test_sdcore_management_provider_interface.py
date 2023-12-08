@@ -9,7 +9,7 @@ import pytest
 from ops import testing
 from ops.charm import CharmBase, RelationJoinedEvent
 
-from lib.charms.sdcore_webui.v0.sdcore_management import SdcoreManagementProvides
+from lib.charms.sdcore_webui_k8s.v0.sdcore_management import SdcoreManagementProvides
 
 METADATA = """
 name: sdcore-management-dummy-provider

@@ -13,7 +13,7 @@ from charms.data_platform_libs.v0.data_interfaces import (  # type: ignore[impor
     DatabaseCreatedEvent,
     DatabaseRequires,
 )
-from charms.sdcore_webui.v0.sdcore_management import (  # type: ignore[import]
+from charms.sdcore_webui_k8s.v0.sdcore_management import (  # type: ignore[import]
     SdcoreManagementProvides,
 )
 from jinja2 import Environment, FileSystemLoader
