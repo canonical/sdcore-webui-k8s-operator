@@ -171,7 +171,9 @@ class TestCharm(unittest.TestCase):
         )
 
     @patch("charm.check_output")
-    @patch("charms.sdcore_webui.v0.sdcore_management.SdcoreManagementProvides.set_management_url")
+    @patch(
+        "charms.sdcore_webui_k8s.v0.sdcore_management.SdcoreManagementProvides.set_management_url"
+    )
     def test_given_webui_url_not_available_when_sdcore_management_relation_joined_then_url_not_set(  # noqa: E501
         self,
         patch_set_management_url,
@@ -185,7 +187,9 @@ class TestCharm(unittest.TestCase):
         patch_set_management_url.assert_not_called()
 
     @patch("charm.check_output")
-    @patch("charms.sdcore_webui.v0.sdcore_management.SdcoreManagementProvides.set_management_url")
+    @patch(
+        "charms.sdcore_webui_k8s.v0.sdcore_management.SdcoreManagementProvides.set_management_url"
+    )
     def test_given_webui_url_available_when_sdcore_management_relation_joined_then_url_is_passed_in_relation(  # noqa: E501
         self,
         patch_set_management_url,
