@@ -14,3 +14,4 @@ juju integrate mongodb-k8s sdcore-webui-k8s
 ## Image
 
 - **webui**: `ghcr.io/canonical/sdcore-webui:1.3`
+
