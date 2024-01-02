@@ -1,12 +1,12 @@
-name: sdcore-webui
+name: sdcore-webui-k8s
 
-display-name: SD-Core 5G WEBUI
+display-name: SD-Core 5G WEBUI K8s
 summary: A Charmed Operator for SD-Core's Webui component.
 description: |
   A Charmed Operator for SD-Core's Webui component, a configuration service in SD-Core.
-website: https://charmhub.io/sdcore-webui
-source: https://github.com/canonical/sdcore-webui-operator
-issues: https://github.com/canonical/sdcore-webui-operator/issues
+website: https://charmhub.io/sdcore-webui-k8s
+source: https://github.com/canonical/sdcore-webui-k8s-operator
+issues: https://github.com/canonical/sdcore-webui-k8s-operator/issues
 
 containers:
   webui:

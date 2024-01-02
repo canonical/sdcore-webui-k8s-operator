@@ -2,11 +2,10 @@
 # See LICENSE file for licensing details.
 
 import unittest
-from io import StringIO
 from unittest.mock import Mock, patch
 
 from ops import testing
-from ops.model import ActiveStatus, WaitingStatus
+from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 
 from charm import WebuiOperatorCharm
 
@@ -26,10 +25,6 @@ def read_file_content(path: str) -> str:
 
 
 class TestCharm(unittest.TestCase):
-    @patch(
-        "charm.KubernetesServicePatch",
-        lambda charm, service_name, ports: None,
-    )
     def setUp(self):
         self.namespace = "whatever"
         self.harness = testing.Harness(WebuiOperatorCharm)
@@ -38,7 +33,7 @@ class TestCharm(unittest.TestCase):
         self.addCleanup(self.harness.cleanup)
         self.harness.begin()
 
-    def _database_is_available(self) -> str:
+    def _create_database_relation_and_populate_data(self) -> int:
         database_url = "http://6.6.6.6"
         database_username = "banana"
         database_password = "pizza"
@@ -55,57 +50,55 @@ class TestCharm(unittest.TestCase):
                 "uris": database_url,
             },
         )
-        return database_url
+        return database_relation_id
 
-    @patch("ops.model.Container.push")
-    @patch("ops.model.Container.exists")
+    def test_given_database_relation_not_created_when_pebble_ready_then_status_is_blocked(
+        self,
+    ):
+        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.container_pebble_ready("webui")
+        self.assertEqual(
+            self.harness.model.unit.status,
+            BlockedStatus("Waiting for database relation to be created"),
+        )
+
     def test_given_config_file_not_written_when_database_is_created_then_config_file_is_written(
         self,
-        patch_exists,
-        patch_push,
     ):
-        patch_exists.side_effect = [True, False]
+        self.harness.add_storage("config", attach=True)
+        root = self.harness.get_filesystem_root("webui")
         self.harness.set_can_connect(container="webui", val=True)
 
         self.harness.charm._on_database_created(event=Mock(uris="1.9.11.4:1234,5.6.7.8:1111"))
 
         expected_config_file_content = read_file_content("tests/unit/expected_webui_cfg.json")
 
-        patch_push.assert_called_with(
-            path="/etc/webui/webuicfg.conf",
-            source=expected_config_file_content,
+        self.assertEqual(
+            (root / "etc/webui/webuicfg.conf").read_text(), expected_config_file_content
         )
 
-    @patch("ops.model.Container.push")
-    @patch("ops.model.Container.pull")
-    @patch("ops.model.Container.exists")
     def test_given_config_file_content_doesnt_match_when_database_changed_then_content_is_updated(
         self,
-        patch_exists,
-        patch_pull,
-        patch_push,
     ):
-        patch_exists.side_effect = [True, True]
-        patch_pull.return_value = StringIO("Obviously different content")
+        self.harness.add_storage("config", attach=True)
+        root = self.harness.get_filesystem_root("webui")
+        (root / "etc/webui/webuicfg.conf").write_text("Obviously different content")
         self.harness.set_can_connect(container="webui", val=True)
 
         self.harness.charm._on_database_created(event=Mock(uris="1.9.11.4:1234,5.6.7.8:1111"))
 
         expected_config_file_content = read_file_content("tests/unit/expected_webui_cfg.json")
 
-        patch_push.assert_called_with(
-            path="/etc/webui/webuicfg.conf",
-            source=expected_config_file_content,
+        self.assertEqual(
+            (root / "etc/webui/webuicfg.conf").read_text(), expected_config_file_content
         )
 
-    @patch("ops.model.Container.exists")
-    def test_given_config_file_is_written_when_pebble_ready_then_pebble_plan_is_applied(
-        self,
-        patch_exists,
-    ):
-        patch_exists.return_value = True
+    def test_given_config_file_is_written_when_pebble_ready_then_pebble_plan_is_applied(self):
+        self.harness.add_storage("config", attach=True)
+        root = self.harness.get_filesystem_root("webui")
+        (root / "etc/webui/webuicfg.conf").write_text("Obviously different content")
 
-        self._database_is_available()
+        self._create_database_relation_and_populate_data()
 
         self.harness.container_pebble_ready(container_name="webui")
 
@@ -130,25 +123,36 @@ class TestCharm(unittest.TestCase):
 
         self.assertEqual(expected_plan, updated_plan)
 
-    @patch("ops.model.Container.exists")
-    def test_given_config_file_is_written_when_pebble_ready_then_status_is_active(
-        self, patch_exists
-    ):
-        patch_exists.return_value = True
+    def test_given_config_file_is_written_when_pebble_ready_then_status_is_active(self):
+        self.harness.add_storage("config", attach=True)
+        root = self.harness.get_filesystem_root("webui")
+        (root / "etc/webui/webuicfg.conf").write_text("Obviously different content")
 
-        self._database_is_available()
+        self._create_database_relation_and_populate_data()
 
         self.harness.container_pebble_ready("webui")
 
         self.assertEqual(self.harness.model.unit.status, ActiveStatus())
 
-    @patch("ops.model.Container.exists")
-    def test_given_config_file_is_not_written_when_pebble_ready_then_status_is_waiting(
-        self, patch_exists
+    def test_given_webui_charm_in_active_state_when_database_relation_breaks_then_status_is_blocked(  # noqa: E501
+        self,
     ):
-        patch_exists.return_value = False
+        self.harness.add_storage("config", attach=True)
+        root = self.harness.get_filesystem_root("webui")
+        (root / "etc/webui/webuicfg.conf").write_text("Obviously different content")
+        database_relation_id = self._create_database_relation_and_populate_data()
+        self.harness.container_pebble_ready("webui")
 
-        self._database_is_available()
+        self.harness.remove_relation(database_relation_id)
+
+        self.assertEqual(
+            self.harness.model.unit.status, BlockedStatus("Waiting for database relation")
+        )
+
+    def test_given_config_file_is_not_written_when_pebble_ready_then_status_is_waiting(self):
+        self.harness.add_storage("config", attach=True)
+
+        self._create_database_relation_and_populate_data()
 
         self.harness.container_pebble_ready("webui")
 
@@ -157,12 +161,7 @@ class TestCharm(unittest.TestCase):
             WaitingStatus("Waiting for config file to be written"),
         )
 
-    @patch("ops.model.Container.exists")
-    def test_given_storage_not_attached_when_on_database_created_then_status_is_waiting(
-        self,
-        patch_exists,
-    ):
-        patch_exists.return_value = False
+    def test_given_storage_not_attached_when_on_database_created_then_status_is_waiting(self):
         self.harness.set_can_connect(container="webui", val=True)
 
         self.harness.charm._on_database_created(event=Mock(uris="1.9.11.4:1234,5.6.7.8:1111"))
@@ -172,7 +171,9 @@ class TestCharm(unittest.TestCase):
         )
 
     @patch("charm.check_output")
-    @patch("charms.sdcore_webui.v0.sdcore_management.SdcoreManagementProvides.set_management_url")
+    @patch(
+        "charms.sdcore_webui_k8s.v0.sdcore_management.SdcoreManagementProvides.set_management_url"
+    )
     def test_given_webui_url_not_available_when_sdcore_management_relation_joined_then_url_not_set(  # noqa: E501
         self,
         patch_set_management_url,
@@ -186,7 +187,9 @@ class TestCharm(unittest.TestCase):
         patch_set_management_url.assert_not_called()
 
     @patch("charm.check_output")
-    @patch("charms.sdcore_webui.v0.sdcore_management.SdcoreManagementProvides.set_management_url")
+    @patch(
+        "charms.sdcore_webui_k8s.v0.sdcore_management.SdcoreManagementProvides.set_management_url"
+    )
     def test_given_webui_url_available_when_sdcore_management_relation_joined_then_url_is_passed_in_relation(  # noqa: E501
         self,
         patch_set_management_url,

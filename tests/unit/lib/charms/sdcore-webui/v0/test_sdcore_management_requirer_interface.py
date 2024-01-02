@@ -8,7 +8,7 @@ from unittest.mock import call, patch
 from ops import testing
 from ops.charm import CharmBase
 
-from lib.charms.sdcore_webui.v0.sdcore_management import (
+from lib.charms.sdcore_webui_k8s.v0.sdcore_management import (
     ManagementUrlAvailable,
     SdcoreManagementRequires,
 )
@@ -26,7 +26,7 @@ requires:
 
 logger = logging.getLogger(__name__)
 
-CHARM_LIB_PATH = "lib.charms.sdcore_webui.v0.sdcore_management"
+CHARM_LIB_PATH = "lib.charms.sdcore_webui_k8s.v0.sdcore_management"
 
 
 class DummySdcoreManagementRequires(CharmBase):

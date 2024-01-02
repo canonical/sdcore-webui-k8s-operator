@@ -1,27 +1,17 @@
-<div align="center">
-  <img src="./icon.svg" alt="ONF Icon" width="200" height="200">
-</div>
-<br/>
-<div align="center">
-  <a href="https://charmhub.io/sdcore-webui"><img src="https://charmhub.io/sdcore-webui/badge.svg" alt="CharmHub Badge"></a>
-  <a href="https://github.com/canonical/sdcore-webui-operator/actions/workflows/publish-charm.yaml">
-    <img src="https://github.com/canonical/sdcore-webui-operator/actions/workflows/publish-charm.yaml/badge.svg?branch=main" alt=".github/workflows/publish-charm.yaml">
-  </a>
-  <br/>
-  <br/>
-  <h1>SD-Core Webui Operator</h1>
-</div>
+# SD-Core Webui Operator (k8s)
+[![CharmHub Badge](https://charmhub.io/sdcore-webui-k8s/badge.svg)](https://charmhub.io/sdcore-webui-k8s)
 
-A Charmed Operator for SD-Core's Webui component, a configuration service in SD-Core. 
+A Charmed Operator for SD-Core's Webui component for K8s, a configuration service in SD-Core. 
 
 ## Usage
 
 ```bash
 juju deploy mongodb-k8s --trust --channel=6/beta
-juju deploy sdcore-webui --trust --channel=edge
-juju integrate mongodb-k8s sdcore-webui
+juju deploy sdcore-webui-k8s --trust --channel=edge
+juju integrate mongodb-k8s sdcore-webui-k8s
 ```
 
 ## Image
 
 - **webui**: `ghcr.io/canonical/sdcore-webui:1.3`
+

@@ -1,6 +1,4 @@
 jinja2
 ops
-lightkube
-lightkube-models
 pytest-interface-tester
 pydantic
