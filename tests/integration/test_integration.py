@@ -24,7 +24,7 @@ async def _deploy_database(ops_test):
     await ops_test.model.deploy(
         DATABASE_APP_NAME,
         application_name=DATABASE_APP_NAME,
-        channel="6/edge",
+        channel="6/beta",
         trust=True,
     )
 
