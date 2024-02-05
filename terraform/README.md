@@ -39,16 +39,16 @@ Replace the values in the `terraform.tfvars` file:
 ```yaml
 # Mandatory Config Options
 model_name          = "put your model-name here"
-db_application_name = "put your mongodb app name here"
+db_application_name = "put your MongoDB app name here"
 ```
 
-Run Terraform Plan by providing var-file:
+Create the Terraform Plan:
 
 ```console
 terraform plan -var-file="terraform.tfvars" 
 ```
 
-Deploy the resources, skip the approval:
+Deploy the resources:
 
 ```console
 terraform apply -auto-approve 
@@ -64,7 +64,7 @@ juju status --relations
 
 ### Clean up
 
-Remove the application:
+Destroy the deployment:
 
 ```console
 terraform destroy -auto-approve
