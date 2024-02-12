@@ -1,71 +1,53 @@
-# SD-Core WEBUI K8s Terraform Module
+# SD-Core WEBUI K8s Terraform module
 
-This SD-Core WEBUI K8s Terraform module aims to deploy the [sdcore-webui-k8s charm](https://charmhub.io/sdcore-webui-k8s) via Terraform.
+This folder contains a base [Terraform][Terraform] module for the sdcore-webui-k8s charm.
 
-## Getting Started
+The module uses the [Terraform Juju provider][Terraform Juju provider] to model the charm deployment onto any Kubernetes environment managed by [Juju][Juju].
 
-### Prerequisites
+The base module is not intended to be deployed in separation (it is possible though), but should rather serve as a building block for higher level modules.
 
-The following software and tools needs to be installed and should be running in the local environment.
+## Module structure
 
-- `microk8s`
-- `juju 3.x`
-- `terrafom`
+- **main.tf** - Defines the Juju application to be deployed.
+- **variables.tf** - Allows customization of the deployment options (Juju model name, channel or application name).
+- **output.tf** - Responsible for integrating the module with other Terraform modules, primarily by defining potential integration endpoints (charm integrations), but also by exposing the application name.
+- **terraform.tf** - Defines the Terraform provider.
 
-### Deploy the sdcore-webui-k8s charm using Terraform
+## Using sdcore-webui-k8s base module in higher level modules
 
-Make sure that `storage` plugin is enabled for Microk8s:
+If you want to use `sdcore-webui-k8s` base module as part of your Terraform module, import it like shown below.
 
-```console
-sudo microk8s enable hostpath-storage
+```text
+module "sdcore-webui-k8s" {
+  source                 = "git::https://github.com/canonical/sdcore-webui-k8s-operator//terraform"
+  model_name             = "juju_model_name"  
+  # Optional Configurations
+  # channel                        = "put the Charm channel here" 
+  # app_name                       = "put the application name here" 
+}
 ```
 
-Add a Juju model:
+Create the integrations, for instance:
 
-```console
-juju add model <model-name>
+```text
+resource "juju_integration" "webui-db" {
+  model = var.model_name
+
+  application {
+    name     = module.webui.app_name
+    endpoint = module.webui.database_endpoint
+  }
+
+  application {
+    name     = module.mongodb.app_name
+    endpoint = module.mongodb.database_endpoint
+  }
+}
 ```
 
-Initialise the provider:
+The complete list of available integrations can be found [here][webui-integrations].
 
-```console
-terraform init
-```
-
-Customize the configuration inputs under `terraform.tfvars` file according to requirement.
-
-Replace the values in the `terraform.tfvars` file:
-
-```yaml
-# Mandatory Config Options
-model_name          = "put your model-name here"
-db_application_name = "put your MongoDB app name here"
-```
-
-Create the Terraform Plan:
-
-```console
-terraform plan -var-file="terraform.tfvars" 
-```
-
-Deploy the resources:
-
-```console
-terraform apply -auto-approve 
-```
-
-### Check the Output
-
-Run `juju switch <juju model>` to switch to the target Juju model and observe the status of the application.
-
-```console
-juju status --relations
-```
-
-### Clean up
-
-Destroy the deployment:
-
-```console
-terraform destroy -auto-approve
-```
+[Terraform]: https://www.terraform.io/
+[Terraform Juju provider]: https://registry.terraform.io/providers/juju/juju/latest
+[Juju]: https://juju.is
+[webui-integrations]: https://charmhub.io/sdcore-webui-k8s/integrations
