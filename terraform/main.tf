@@ -1,5 +1,8 @@
-resource "juju_application" "webui" {
-  name  = "webui"
+# Copyright 2024 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+resource "juju_application" "sdcore-webui-k8s" {
+  name  = var.app_name
   model = var.model_name
 
   charm {
@@ -10,19 +13,4 @@ resource "juju_application" "webui" {
   units = 1
   trust = true
 }
-
-resource "juju_integration" "webui-db" {
-  model = var.model_name
-
-  application {
-    name     = juju_application.webui.name
-    endpoint = "database"
-  }
-
-  application {
-    name     = var.db_application_name
-    endpoint = "database"
-  }
-}
-
 
