@@ -9,11 +9,7 @@ from ipaddress import IPv4Address
 from subprocess import CalledProcessError, check_output
 from typing import Optional
 
-from charms.data_platform_libs.v0.data_interfaces import (  # type: ignore[import]
-    DatabaseCreatedEvent,
-    DatabaseEndpointsChangedEvent,
-    DatabaseRequires,
-)
+from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires  # type: ignore[import]
 from charms.sdcore_webui_k8s.v0.sdcore_management import (  # type: ignore[import]
     SdcoreManagementProvides,
 )
@@ -93,8 +89,8 @@ class WebuiOperatorCharm(CharmBase):
         self.framework.observe(self.on.webui_pebble_ready, self._configure)
         self.framework.observe(self.on.database_relation_joined, self._configure)
         self.framework.observe(self.on.database_relation_broken, self._on_database_relation_broken)
-        self.framework.observe(self._database.on.database_created, self._configure)
-        self.framework.observe(self._database.on.endpoints_changed, self._configure)
+        self.framework.observe(self._database.on.database_created, self._configure_db)
+        self.framework.observe(self._database.on.endpoints_changed, self._configure_db)
         self.framework.observe(
             self.on.sdcore_management_relation_joined, self._publish_sdcore_management_url
         )
@@ -118,12 +114,6 @@ class WebuiOperatorCharm(CharmBase):
         if not self._container.exists(path=BASE_CONFIG_PATH):
             self.unit.status = WaitingStatus("Waiting for storage to be attached")
             return
-
-        if isinstance(event, DatabaseCreatedEvent) or isinstance(
-            event, DatabaseEndpointsChangedEvent
-        ):
-            self._write_database_information_in_config_file(event.uris)
-
         if not self._config_file_exists():
             self.unit.status = WaitingStatus("Waiting for config file to be written")
             return
@@ -132,6 +122,23 @@ class WebuiOperatorCharm(CharmBase):
         self._container.replan()
         self._container.restart(self._service_name)
         self.unit.status = ActiveStatus()
+
+    def _configure_db(self, event: EventBase) -> None:
+        """Handles database events (DatabaseCreatedEvent, DatabaseEndpointsChangedEvent).
+
+        Args:
+            event (EventBase): Juju event.
+        """
+        if not self._container.can_connect():
+            self.unit.status = WaitingStatus("Waiting for container to be ready")
+            event.defer()
+            return
+        if not self._container.exists(path=BASE_CONFIG_PATH):
+            self.unit.status = WaitingStatus("Waiting for storage to be attached")
+            event.defer()
+            return
+        self._write_database_information_in_config_file(event.uris)
+        self._configure(event)
 
     def _write_database_information_in_config_file(self, uris: str) -> None:
         """Extracts the MongoDb URL from uris and writes it in the config file.

@@ -222,6 +222,7 @@ class TestCharm(unittest.TestCase):
     def test_given_charm_active_status_when_database_relation_breaks_then_status_is_blocked(
         self,
     ):
+        self.harness.set_can_connect(container="webui", val=True)
         self.harness.add_storage("config", attach=True)
         database_relation_id = self._create_database_relation_and_populate_data()
         self.harness.container_pebble_ready("webui")
@@ -233,7 +234,7 @@ class TestCharm(unittest.TestCase):
         )
 
     def test_given_storage_not_attached_when_pebble_ready_then_status_is_waiting(self):
-
+        self.harness.set_can_connect(container="webui", val=True)
         self.harness.add_storage("config", attach=False)
         self._create_database_relation_and_populate_data()
 
