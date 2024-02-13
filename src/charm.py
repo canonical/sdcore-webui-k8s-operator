@@ -119,7 +119,9 @@ class WebuiOperatorCharm(CharmBase):
             self.unit.status = WaitingStatus("Waiting for storage to be attached")
             return
 
-        if isinstance(event, DatabaseCreatedEvent) or isinstance(event, DatabaseEndpointsChangedEvent):
+        if isinstance(event, DatabaseCreatedEvent) or isinstance(
+            event, DatabaseEndpointsChangedEvent
+        ):
             self._write_database_information_in_config_file(event.uris)
 
         if not self._config_file_exists():
@@ -132,7 +134,7 @@ class WebuiOperatorCharm(CharmBase):
         self.unit.status = ActiveStatus()
 
     def _write_database_information_in_config_file(self, uris: str) -> None:
-        """ Extracts the MongoDb URL from uris and writes it in the config file.
+        """Extracts the MongoDb URL from uris and writes it in the config file.
 
         Args:
             uris (str): database connection URIs.
