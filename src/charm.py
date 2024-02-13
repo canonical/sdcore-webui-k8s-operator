@@ -119,7 +119,8 @@ class WebuiOperatorCharm(CharmBase):
             self.unit.status = WaitingStatus("Waiting for storage to be attached")
             return
 
-        self._write_database_information_in_config_file(event)
+        if isinstance(event, DatabaseCreatedEvent) or isinstance(event, DatabaseEndpointsChangedEvent):
+            self._write_database_information_in_config_file(event.uris)
 
         if not self._config_file_exists():
             self.unit.status = WaitingStatus("Waiting for config file to be written")
@@ -130,19 +131,13 @@ class WebuiOperatorCharm(CharmBase):
         self._container.restart(self._service_name)
         self.unit.status = ActiveStatus()
 
-    def _write_database_information_in_config_file(self, event: EventBase) -> None:
-        """Get the database URL from DatabaseCreatedEvent or DatabaseEndpointsChangedEvent.
-
-        It writes the URL to the config file.
+    def _write_database_information_in_config_file(self, uris: str) -> None:
+        """ Extracts the MongoDb URL from uris and writes it in the config file.
 
         Args:
-            event (EventBase): Juju event.
+            uris (str): database connection URIs.
         """
-        if not isinstance(event, DatabaseCreatedEvent) and not isinstance(
-            event, DatabaseEndpointsChangedEvent
-        ):
-            return
-        database_url = event.uris.split(",")[0]
+        database_url = uris.split(",")[0]
         config_file_content = render_config_file(
             database_name=DATABASE_NAME, database_url=database_url
         )
