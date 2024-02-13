@@ -93,7 +93,23 @@ class TestCharm(unittest.TestCase):
             (root / "etc/webui/webuicfg.conf").read_text(), expected_config_file_content
         )
 
-    def test_given_storage_attached_and_can_connect_to_container_when_pebble_ready_then_config_file_is_written(  # noqa: E501
+    def test_given_config_file_is_not_written_when_pebble_ready_then_status_is_waiting(  # noqa: E501
+        self,
+    ):
+        self.harness.add_storage("config", attach=True)
+        database_relation_id = self.harness.add_relation("database", "mongodb")
+        self.harness.add_relation_unit(
+            relation_id=database_relation_id, remote_unit_name="mongodb/0"
+        )
+
+        self.harness.container_pebble_ready(container_name="webui")
+
+        self.assertEqual(
+            self.harness.model.unit.status,
+            WaitingStatus("Waiting for config file to be written"),
+        )
+
+    def test_given_storage_attached_and_config_file_exists_when_pebble_ready_then_config_file_is_written(  # noqa: E501
         self,
     ):
         self.harness.set_can_connect(container="webui", val=True)
@@ -112,6 +128,7 @@ class TestCharm(unittest.TestCase):
     def test_given_container_is_ready_db_relation_exists_and_storage_attached_when_pebble_ready_then_pebble_plan_is_applied(  # noqa: E501
         self,
     ):
+        self.harness.set_can_connect(container="webui", val=True)
         self.harness.add_storage("config", attach=True)
         self._create_database_relation_and_populate_data()
 
@@ -135,7 +152,6 @@ class TestCharm(unittest.TestCase):
         }
 
         updated_plan = self.harness.get_container_pebble_plan("webui").to_dict()
-
         self.assertEqual(expected_plan, updated_plan)
 
     def test_given_container_is_ready_and_storage_attached_when_db_relation_added_then_pebble_plan_is_applied(  # noqa: E501
@@ -164,12 +180,12 @@ class TestCharm(unittest.TestCase):
         }
 
         updated_plan = self.harness.get_container_pebble_plan("webui").to_dict()
-
         self.assertEqual(expected_plan, updated_plan)
 
     def test_given_container_is_ready_db_relation_exists_and_storage_attached_when_pebble_ready_then_status_is_active(  # noqa: E501
         self,
     ):
+        self.harness.set_can_connect(container="webui", val=True)
         self.harness.add_storage("config", attach=True)
         self._create_database_relation_and_populate_data()
 

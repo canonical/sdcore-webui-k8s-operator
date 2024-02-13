@@ -102,7 +102,9 @@ class WebuiOperatorCharm(CharmBase):
         self.framework.observe(self.on.config_changed, self._publish_sdcore_management_url)
 
     def _configure(self, event: EventBase) -> None:
-        """Handles pebble ready event.
+        """Juju event handler.
+
+        Sets unit status, writes configuration file adds pebble layer.
 
         Args:
             event (EventBase): Juju event.
@@ -118,6 +120,11 @@ class WebuiOperatorCharm(CharmBase):
             return
 
         self._write_database_information_in_config_file(event)
+
+        if not self._config_file_exists():
+            self.unit.status = WaitingStatus("Waiting for config file to be written")
+            return
+
         self._container.add_layer("webui", self._pebble_layer, combine=True)
         self._container.replan()
         self._container.restart(self._service_name)
@@ -145,6 +152,9 @@ class WebuiOperatorCharm(CharmBase):
         """Sets the webui url in the sdcore management relation.
 
         Passes the url of webui to sdcore management relation.
+
+        Args:
+            event (EventBase): Juju event
         """
         if not self._relation_created(SDCORE_MANAGEMENT_RELATION_NAME):
             return
@@ -171,6 +181,10 @@ class WebuiOperatorCharm(CharmBase):
         """
         self._container.push(path=f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}", source=content)
         logger.info("Pushed %s config file", CONFIG_FILE_NAME)
+
+    def _config_file_exists(self) -> bool:
+        """Returns whether the configuration file exists."""
+        return bool(self._container.exists(f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}"))
 
     def _database_relation_is_created(self) -> bool:
         return self._relation_created(DATABASE_RELATION_NAME)
