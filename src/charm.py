@@ -9,7 +9,10 @@ from ipaddress import IPv4Address
 from subprocess import CalledProcessError, check_output
 from typing import Optional
 
-from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires  # type: ignore[import]
+from charms.data_platform_libs.v0.data_interfaces import (  # type: ignore[import]
+    DatabaseRequires,
+    DatabaseRequiresEvent,
+)
 from charms.sdcore_webui_k8s.v0.sdcore_management import (  # type: ignore[import]
     SdcoreManagementProvides,
 )
@@ -123,11 +126,11 @@ class WebuiOperatorCharm(CharmBase):
         self._container.restart(self._service_name)
         self.unit.status = ActiveStatus()
 
-    def _configure_db(self, event: EventBase) -> None:
+    def _configure_db(self, event: DatabaseRequiresEvent) -> None:
         """Handles database events (DatabaseCreatedEvent, DatabaseEndpointsChangedEvent).
 
         Args:
-            event (EventBase): Juju event.
+            event (DatabaseRequiresEvent): Juju event.
         """
         if not self._container.can_connect():
             self.unit.status = WaitingStatus("Waiting for container to be ready")
