@@ -10,8 +10,8 @@ from subprocess import CalledProcessError, check_output
 from typing import Optional
 
 from charms.data_platform_libs.v0.data_interfaces import (  # type: ignore[import]
-    DatabaseCreatedEvent,
     DatabaseRequires,
+    DatabaseRequiresEvent,
 )
 from charms.sdcore_webui_k8s.v0.sdcore_management import (  # type: ignore[import]
     SdcoreManagementProvides,
@@ -88,19 +88,22 @@ class WebuiOperatorCharm(CharmBase):
         self._sdcore_management = SdcoreManagementProvides(self, SDCORE_MANAGEMENT_RELATION_NAME)
         self.unit.set_ports(GRPC_PORT, WEBUI_URL_PORT)
 
-        self.framework.observe(self.on.webui_pebble_ready, self._on_webui_pebble_ready)
-        self.framework.observe(self.on.database_relation_joined, self._on_webui_pebble_ready)
+        self.framework.observe(self.on.update_status, self._configure)
+        self.framework.observe(self.on.webui_pebble_ready, self._configure)
+        self.framework.observe(self.on.database_relation_joined, self._configure)
         self.framework.observe(self.on.database_relation_broken, self._on_database_relation_broken)
-        self.framework.observe(self._database.on.database_created, self._on_database_created)
-        self.framework.observe(self._database.on.endpoints_changed, self._on_database_created)
+        self.framework.observe(self._database.on.database_created, self._configure_db)
+        self.framework.observe(self._database.on.endpoints_changed, self._configure_db)
         self.framework.observe(
             self.on.sdcore_management_relation_joined, self._publish_sdcore_management_url
         )
         # Handling config changed event to publish the new url if the unit reboots and gets new IP
         self.framework.observe(self.on.config_changed, self._publish_sdcore_management_url)
 
-    def _on_webui_pebble_ready(self, event: EventBase) -> None:
-        """Handles pebble ready event.
+    def _configure(self, event: EventBase) -> None:
+        """Juju event handler.
+
+        Sets unit status, writes configuration file adds pebble layer.
 
         Args:
             event (EventBase): Juju event.
@@ -110,21 +113,24 @@ class WebuiOperatorCharm(CharmBase):
             return
         if not self._container.can_connect():
             self.unit.status = WaitingStatus("Waiting for container to be ready")
-            event.defer()
             return
-        if not self._config_file_is_written():
+        if not self._container.exists(path=BASE_CONFIG_PATH):
+            self.unit.status = WaitingStatus("Waiting for storage to be attached")
+            return
+        if not self._config_file_exists():
             self.unit.status = WaitingStatus("Waiting for config file to be written")
             return
+
         self._container.add_layer("webui", self._pebble_layer, combine=True)
         self._container.replan()
         self._container.restart(self._service_name)
         self.unit.status = ActiveStatus()
 
-    def _on_database_created(self, event: DatabaseCreatedEvent) -> None:
-        """Handle database created event.
+    def _configure_db(self, event: DatabaseRequiresEvent) -> None:
+        """Handles database events (DatabaseCreatedEvent, DatabaseEndpointsChangedEvent).
 
         Args:
-            event (DatabaseCreatedEvent): Juju event.
+            event (DatabaseRequiresEvent): Juju event.
         """
         if not self._container.can_connect():
             self.unit.status = WaitingStatus("Waiting for container to be ready")
@@ -134,11 +140,20 @@ class WebuiOperatorCharm(CharmBase):
             self.unit.status = WaitingStatus("Waiting for storage to be attached")
             event.defer()
             return
+        self._write_database_information_in_config_file(event.uris)
+        self._configure(event)
+
+    def _write_database_information_in_config_file(self, uris: str) -> None:
+        """Extracts the MongoDb URL from uris and writes it in the config file.
+
+        Args:
+            uris (str): database connection URIs.
+        """
+        database_url = uris.split(",")[0]
         config_file_content = render_config_file(
-            database_name=DATABASE_NAME, database_url=event.uris.split(",")[0]
+            database_name=DATABASE_NAME, database_url=database_url
         )
         self._write_config_file(content=config_file_content)
-        self._on_webui_pebble_ready(event=event)
 
     def _publish_sdcore_management_url(self, event: EventBase):
         """Sets the webui url in the sdcore management relation.
@@ -146,7 +161,7 @@ class WebuiOperatorCharm(CharmBase):
         Passes the url of webui to sdcore management relation.
 
         Args:
-            event (EventBase): Juju event.
+            event (EventBase): Juju event
         """
         if not self._relation_created(SDCORE_MANAGEMENT_RELATION_NAME):
             return
@@ -174,8 +189,8 @@ class WebuiOperatorCharm(CharmBase):
         self._container.push(path=f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}", source=content)
         logger.info("Pushed %s config file", CONFIG_FILE_NAME)
 
-    def _config_file_is_written(self) -> bool:
-        """Returns whether the configuration file is written."""
+    def _config_file_exists(self) -> bool:
+        """Returns whether the configuration file exists."""
         return bool(self._container.exists(f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}"))
 
     def _database_relation_is_created(self) -> bool:

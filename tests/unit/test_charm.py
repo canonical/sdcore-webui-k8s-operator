@@ -2,7 +2,7 @@
 # See LICENSE file for licensing details.
 
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from ops import testing
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
@@ -34,7 +34,7 @@ class TestCharm(unittest.TestCase):
         self.harness.begin()
 
     def _create_database_relation_and_populate_data(self) -> int:
-        database_url = "http://6.6.6.6"
+        database_url = "1.9.11.4:1234,5.6.7.8:1111"
         database_username = "banana"
         database_password = "pizza"
         database_relation_id = self.harness.add_relation("database", "mongodb")
@@ -55,21 +55,21 @@ class TestCharm(unittest.TestCase):
     def test_given_database_relation_not_created_when_pebble_ready_then_status_is_blocked(
         self,
     ):
-        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.add_storage("config", attach=True)
         self.harness.container_pebble_ready("webui")
         self.assertEqual(
             self.harness.model.unit.status,
             BlockedStatus("Waiting for database relation to be created"),
         )
 
-    def test_given_config_file_not_written_when_database_is_created_then_config_file_is_written(
+    def test_given_storage_attached_and_can_connect_to_container_when_db_is_created_then_config_file_is_written(  # noqa: E501
         self,
     ):
+        self.harness.set_can_connect(container="webui", val=True)
         self.harness.add_storage("config", attach=True)
         root = self.harness.get_filesystem_root("webui")
-        self.harness.set_can_connect(container="webui", val=True)
 
-        self.harness.charm._on_database_created(event=Mock(uris="1.9.11.4:1234,5.6.7.8:1111"))
+        self._create_database_relation_and_populate_data()
 
         expected_config_file_content = read_file_content("tests/unit/expected_webui_cfg.json")
 
@@ -80,12 +80,12 @@ class TestCharm(unittest.TestCase):
     def test_given_config_file_content_doesnt_match_when_database_changed_then_content_is_updated(
         self,
     ):
+        self.harness.set_can_connect(container="webui", val=True)
         self.harness.add_storage("config", attach=True)
         root = self.harness.get_filesystem_root("webui")
         (root / "etc/webui/webuicfg.conf").write_text("Obviously different content")
-        self.harness.set_can_connect(container="webui", val=True)
 
-        self.harness.charm._on_database_created(event=Mock(uris="1.9.11.4:1234,5.6.7.8:1111"))
+        self._create_database_relation_and_populate_data()
 
         expected_config_file_content = read_file_content("tests/unit/expected_webui_cfg.json")
 
@@ -93,11 +93,43 @@ class TestCharm(unittest.TestCase):
             (root / "etc/webui/webuicfg.conf").read_text(), expected_config_file_content
         )
 
-    def test_given_config_file_is_written_when_pebble_ready_then_pebble_plan_is_applied(self):
+    def test_given_config_file_is_not_written_when_pebble_ready_then_status_is_waiting(  # noqa: E501
+        self,
+    ):
+        self.harness.add_storage("config", attach=True)
+        database_relation_id = self.harness.add_relation("database", "mongodb")
+        self.harness.add_relation_unit(
+            relation_id=database_relation_id, remote_unit_name="mongodb/0"
+        )
+
+        self.harness.container_pebble_ready(container_name="webui")
+
+        self.assertEqual(
+            self.harness.model.unit.status,
+            WaitingStatus("Waiting for config file to be written"),
+        )
+
+    def test_given_storage_attached_and_config_file_exists_when_pebble_ready_then_config_file_is_written(  # noqa: E501
+        self,
+    ):
+        self.harness.set_can_connect(container="webui", val=True)
         self.harness.add_storage("config", attach=True)
         root = self.harness.get_filesystem_root("webui")
-        (root / "etc/webui/webuicfg.conf").write_text("Obviously different content")
+        self._create_database_relation_and_populate_data()
 
+        self.harness.container_pebble_ready(container_name="webui")
+
+        expected_config_file_content = read_file_content("tests/unit/expected_webui_cfg.json")
+
+        self.assertEqual(
+            (root / "etc/webui/webuicfg.conf").read_text(), expected_config_file_content
+        )
+
+    def test_given_container_is_ready_db_relation_exists_and_storage_attached_when_pebble_ready_then_pebble_plan_is_applied(  # noqa: E501
+        self,
+    ):
+        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.add_storage("config", attach=True)
         self._create_database_relation_and_populate_data()
 
         self.harness.container_pebble_ready(container_name="webui")
@@ -120,26 +152,78 @@ class TestCharm(unittest.TestCase):
         }
 
         updated_plan = self.harness.get_container_pebble_plan("webui").to_dict()
-
         self.assertEqual(expected_plan, updated_plan)
 
-    def test_given_config_file_is_written_when_pebble_ready_then_status_is_active(self):
+    def test_given_container_is_ready_and_storage_attached_when_db_relation_added_then_pebble_plan_is_applied(  # noqa: E501
+        self,
+    ):
+        self.harness.set_can_connect(container="webui", val=True)
         self.harness.add_storage("config", attach=True)
-        root = self.harness.get_filesystem_root("webui")
-        (root / "etc/webui/webuicfg.conf").write_text("Obviously different content")
 
+        self._create_database_relation_and_populate_data()
+
+        expected_plan = {
+            "services": {
+                "webui": {
+                    "override": "replace",
+                    "command": "/bin/webconsole --webuicfg /etc/webui/webuicfg.conf",
+                    "startup": "enabled",
+                    "environment": {
+                        "GRPC_GO_LOG_VERBOSITY_LEVEL": "99",
+                        "GRPC_GO_LOG_SEVERITY_LEVEL": "info",
+                        "GRPC_TRACE": "all",
+                        "GRPC_VERBOSITY": "debug",
+                        "CONFIGPOD_DEPLOYMENT": "5G",
+                    },
+                }
+            },
+        }
+
+        updated_plan = self.harness.get_container_pebble_plan("webui").to_dict()
+        self.assertEqual(expected_plan, updated_plan)
+
+    def test_given_container_is_ready_db_relation_exists_and_storage_attached_when_pebble_ready_then_status_is_active(  # noqa: E501
+        self,
+    ):
+        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.add_storage("config", attach=True)
         self._create_database_relation_and_populate_data()
 
         self.harness.container_pebble_ready("webui")
 
         self.assertEqual(self.harness.model.unit.status, ActiveStatus())
 
-    def test_given_webui_charm_in_active_state_when_database_relation_breaks_then_status_is_blocked(  # noqa: E501
+    def test_given_container_is_ready_and_storage_attached_when_database_created_then_status_is_active(  # noqa: E501
         self,
     ):
+        self.harness.set_can_connect(container="webui", val=True)
         self.harness.add_storage("config", attach=True)
-        root = self.harness.get_filesystem_root("webui")
-        (root / "etc/webui/webuicfg.conf").write_text("Obviously different content")
+
+        self._create_database_relation_and_populate_data()
+
+        self.assertEqual(self.harness.model.unit.status, ActiveStatus())
+
+    def test_given_container_is_ready_and_storage_attached_when_db_enpoints_changed_then_status_is_active(  # noqa: E501
+        self,
+    ):
+        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.add_storage("config", attach=True)
+
+        relation_id = self._create_database_relation_and_populate_data()
+
+        self.harness.update_relation_data(
+            relation_id=relation_id,
+            app_or_unit="mongodb",
+            key_values={"endpoints": "some-endpoint"},
+        )
+
+        self.assertEqual(self.harness.model.unit.status, ActiveStatus())
+
+    def test_given_charm_active_status_when_database_relation_breaks_then_status_is_blocked(
+        self,
+    ):
+        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.add_storage("config", attach=True)
         database_relation_id = self._create_database_relation_and_populate_data()
         self.harness.container_pebble_ready("webui")
 
@@ -149,23 +233,49 @@ class TestCharm(unittest.TestCase):
             self.harness.model.unit.status, BlockedStatus("Waiting for database relation")
         )
 
-    def test_given_config_file_is_not_written_when_pebble_ready_then_status_is_waiting(self):
-        self.harness.add_storage("config", attach=True)
-
+    def test_given_storage_not_attached_when_pebble_ready_then_status_is_waiting(self):
+        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.add_storage("config", attach=False)
         self._create_database_relation_and_populate_data()
 
         self.harness.container_pebble_ready("webui")
 
         self.assertEqual(
-            self.harness.model.unit.status,
-            WaitingStatus("Waiting for config file to be written"),
+            self.harness.model.unit.status, WaitingStatus("Waiting for storage to be attached")
         )
 
     def test_given_storage_not_attached_when_on_database_created_then_status_is_waiting(self):
         self.harness.set_can_connect(container="webui", val=True)
+        self.harness.add_storage("config", attach=False)
 
-        self.harness.charm._on_database_created(event=Mock(uris="1.9.11.4:1234,5.6.7.8:1111"))
+        self._create_database_relation_and_populate_data()
 
+        self.assertEqual(
+            self.harness.model.unit.status, WaitingStatus("Waiting for storage to be attached")
+        )
+
+    def test_given_storage_attached_but_cannot_connect_to_container_when_db_created_then_status_is_waiting(  # noqa: E501
+        self,
+    ):
+        self.harness.set_can_connect(container="webui", val=False)
+        self.harness.add_storage("config", attach=True)
+
+        self._create_database_relation_and_populate_data()
+
+        self.assertEqual(
+            self.harness.model.unit.status, WaitingStatus("Waiting for container to be ready")
+        )
+
+    def test_given_storage_not_attached_when_on_database_endpoints_changed_then_status_is_waiting(
+        self,
+    ):
+        self.harness.set_can_connect(container="webui", val=True)
+        relation_id = self._create_database_relation_and_populate_data()
+        self.harness.update_relation_data(
+            relation_id=relation_id,
+            app_or_unit="mongodb",
+            key_values={"endpoints": "some endpoint"},
+        )
         self.assertEqual(
             self.harness.model.unit.status, WaitingStatus("Waiting for storage to be attached")
         )
