@@ -30,12 +30,12 @@ module "sdcore-webui-k8s" {
 Create the integrations, for instance:
 
 ```text
-resource "juju_integration" "webui-db" {
+resource "juju_integration" "webui-common-db" {
   model = var.model_name
 
   application {
     name     = module.webui.app_name
-    endpoint = module.webui.database_endpoint
+    endpoint = module.webui.common_database_endpoint
   }
 
   application {

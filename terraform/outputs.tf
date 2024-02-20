@@ -8,9 +8,14 @@ output "app_name" {
 
 # Required integration endpoints
 
-output "database_endpoint" {
-  description = "Name of the endpoint to integrate with MongoDB using mongodb_client interface."
-  value       = "database"
+output "common_database_endpoint" {
+  description = "Name of the endpoint to integrate with MongoDB for common database using mongodb_client interface."
+  value       = "common_database"
+}
+
+output "auth_database_endpoint" {
+  description = "Name of the endpoint to integrate with MongoDB for authentication database using mongodb_client interface."
+  value       = "auth_database"
 }
 
 # Provided integration endpoints
