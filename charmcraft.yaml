@@ -11,3 +11,4 @@ parts:
   charm:
     build-packages:
       - libffi-dev
+      - rustc
