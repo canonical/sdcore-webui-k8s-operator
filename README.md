@@ -8,7 +8,8 @@ A Charmed Operator for SD-Core's Webui component for K8s, a configuration servic
 ```bash
 juju deploy mongodb-k8s --trust --channel=6/beta
 juju deploy sdcore-webui-k8s --trust --channel=edge
-juju integrate mongodb-k8s sdcore-webui-k8s
+juju integrate mongodb-k8s sdcore-webui-k8s:common_database
+juju integrate mongodb-k8s sdcore-webui-k8s:auth_database
 ```
 
 ## Image

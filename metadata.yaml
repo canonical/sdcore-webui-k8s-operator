@@ -27,7 +27,9 @@ storage:
     minimum-size: 1M
 
 requires:
-  database:
+  common_database:
+    interface: mongodb_client
+  auth_database:
     interface: mongodb_client
 
 provides:

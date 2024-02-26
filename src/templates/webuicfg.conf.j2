@@ -3,8 +3,10 @@ configuration:
     enabled: true
     syncUrl: ""
   mongodb:
-    name: {{ database_name }}
-    url: {{ database_url }}
+    name: {{ common_database_name }}
+    url: {{ common_database_url }}
+    authKeysDbName: {{ auth_database_name }}
+    authUrl: {{ auth_database_url }}
   spec-compliant-sdf: false
 info:
   description: WebUI initial local configuration

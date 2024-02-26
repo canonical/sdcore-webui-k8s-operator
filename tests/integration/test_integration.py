@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 APP_NAME = METADATA["name"]
 DATABASE_APP_NAME = "mongodb-k8s"
+COMMON_DATABASE_RELATION_NAME = "common_database"
+AUTH_DATABASE_RELATION_NAME = "auth_database"
 
 
 async def _deploy_database(ops_test):
@@ -63,8 +65,11 @@ async def test_relate_and_wait_for_active_status(
     ops_test,
     build_and_deploy,
 ):
-    await ops_test.model.add_relation(
-        relation1=f"{APP_NAME}:database", relation2=f"{DATABASE_APP_NAME}"
+    await ops_test.model.integrate(
+        relation1=f"{APP_NAME}:{COMMON_DATABASE_RELATION_NAME}", relation2=f"{DATABASE_APP_NAME}"
+    )
+    await ops_test.model.integrate(
+        relation1=f"{APP_NAME}:{AUTH_DATABASE_RELATION_NAME}", relation2=f"{DATABASE_APP_NAME}"
     )
     await ops_test.model.wait_for_idle(
         apps=[APP_NAME],
@@ -90,7 +95,12 @@ async def test_remove_database_and_wait_for_blocked_status(ops_test: OpsTest, bu
 async def test_restore_database_and_wait_for_active_status(ops_test: OpsTest, build_and_deploy):
     assert ops_test.model
     await _deploy_database(ops_test)
-    await ops_test.model.integrate(relation1=APP_NAME, relation2=DATABASE_APP_NAME)
+    await ops_test.model.integrate(
+        relation1=f"{APP_NAME}:{COMMON_DATABASE_RELATION_NAME}", relation2=DATABASE_APP_NAME
+    )
+    await ops_test.model.integrate(
+        relation1=f"{APP_NAME}:{AUTH_DATABASE_RELATION_NAME}", relation2=DATABASE_APP_NAME
+    )
     await ops_test.model.wait_for_idle(apps=[APP_NAME], status="active", timeout=1000)
 
 
