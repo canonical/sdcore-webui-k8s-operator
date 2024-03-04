@@ -19,6 +19,7 @@ APP_NAME = METADATA["name"]
 DATABASE_APP_NAME = "mongodb-k8s"
 COMMON_DATABASE_RELATION_NAME = "common_database"
 AUTH_DATABASE_RELATION_NAME = "auth_database"
+GRAFANA_AGENT_APP_NAME = "grafana-agent-k8s"
 
 
 async def _deploy_database(ops_test):
@@ -28,6 +29,15 @@ async def _deploy_database(ops_test):
         application_name=DATABASE_APP_NAME,
         channel="6/beta",
         trust=True,
+    )
+
+
+async def _deploy_grafana_agent(ops_test):
+    """Deploy Grafana Agent."""
+    await ops_test.model.deploy(
+        GRAFANA_AGENT_APP_NAME,
+        application_name=GRAFANA_AGENT_APP_NAME,
+        channel="stable",
     )
 
 
@@ -46,6 +56,7 @@ async def build_and_deploy(ops_test):
         trust=True,
     )
     await _deploy_database(ops_test)
+    await _deploy_grafana_agent(ops_test)
 
 
 @pytest.mark.abort_on_fail
@@ -70,6 +81,9 @@ async def test_relate_and_wait_for_active_status(
     )
     await ops_test.model.integrate(
         relation1=f"{APP_NAME}:{AUTH_DATABASE_RELATION_NAME}", relation2=f"{DATABASE_APP_NAME}"
+    )
+    await ops_test.model.integrate(
+        relation1=f"{APP_NAME}:logging", relation2=GRAFANA_AGENT_APP_NAME
     )
     await ops_test.model.wait_for_idle(
         apps=[APP_NAME],

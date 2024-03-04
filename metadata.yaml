@@ -31,6 +31,8 @@ requires:
     interface: mongodb_client
   auth_database:
     interface: mongodb_client
+  logging:
+    interface: loki_push_api
 
 provides:
   sdcore-management:
@@ -38,3 +40,4 @@ provides:
 
 assumes:
   - k8s-api
+  - juju >= 3.4

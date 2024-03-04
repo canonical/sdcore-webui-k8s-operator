@@ -18,6 +18,11 @@ output "auth_database_endpoint" {
   value       = "auth_database"
 }
 
+output "logging_endpoint" {
+  description = "Name of the endpoint used to integrate with the Logging provider."
+  value       = "logging"
+}
+
 # Provided integration endpoints
 
 output "sdcore_management_endpoint" {
