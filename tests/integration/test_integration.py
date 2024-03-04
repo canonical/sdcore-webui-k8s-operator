@@ -19,6 +19,7 @@ APP_NAME = METADATA["name"]
 DATABASE_APP_NAME = "mongodb-k8s"
 COMMON_DATABASE_RELATION_NAME = "common_database"
 AUTH_DATABASE_RELATION_NAME = "auth_database"
+LOGGING_RELATION_NAME = "logging"
 GRAFANA_AGENT_APP_NAME = "grafana-agent-k8s"
 
 
@@ -83,7 +84,7 @@ async def test_relate_and_wait_for_active_status(
         relation1=f"{APP_NAME}:{AUTH_DATABASE_RELATION_NAME}", relation2=f"{DATABASE_APP_NAME}"
     )
     await ops_test.model.integrate(
-        relation1=f"{APP_NAME}:logging", relation2=GRAFANA_AGENT_APP_NAME
+        relation1=f"{APP_NAME}:{LOGGING_RELATION_NAME}", relation2=GRAFANA_AGENT_APP_NAME
     )
     await ops_test.model.wait_for_idle(
         apps=[APP_NAME],
