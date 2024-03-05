@@ -10,6 +10,7 @@ from subprocess import CalledProcessError, check_output
 from typing import Optional
 
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires  # type: ignore[import]
+from charms.loki_k8s.v1.loki_push_api import LogForwarder  # type: ignore[import]
 from charms.sdcore_webui_k8s.v0.sdcore_management import (  # type: ignore[import]
     SdcoreManagementProvides,
 )
@@ -30,6 +31,7 @@ COMMON_DATABASE_NAME = "free5gc"
 SDCORE_MANAGEMENT_RELATION_NAME = "sdcore-management"
 GRPC_PORT = 9876
 WEBUI_URL_PORT = 5000
+LOGGING_RELATION_NAME = "logging"
 
 
 def _get_pod_ip() -> Optional[str]:
@@ -99,6 +101,7 @@ class WebuiOperatorCharm(CharmBase):
             database_name=AUTH_DATABASE_NAME,
             extra_user_roles="admin",
         )
+        self._logging = LogForwarder(charm=self, relation_name=LOGGING_RELATION_NAME)
         self._sdcore_management = SdcoreManagementProvides(self, SDCORE_MANAGEMENT_RELATION_NAME)
         self.unit.set_ports(GRPC_PORT, WEBUI_URL_PORT)
         self.framework.observe(self.on.webui_pebble_ready, self._configure_webui)
