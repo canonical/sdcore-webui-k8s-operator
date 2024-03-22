@@ -162,25 +162,32 @@ class WebuiOperatorCharm(CharmBase):
             # teardown code is necessary to preform if we're removing the
             # charm.
             event.add_status(BlockedStatus("Scaling is not implemented for this charm"))
+            logger.info("Scaling is not implemented for this charm")
             return
         for relation in [COMMON_DATABASE_RELATION_NAME, AUTH_DATABASE_RELATION_NAME]:
             if not self._relation_created(relation):
                 event.add_status(BlockedStatus(f"Waiting for {relation} relation to be created"))
+                logger.info(f"Waiting for {relation} relation to be created")
                 return
         if not self._common_database_is_available():
             event.add_status(WaitingStatus("Waiting for the common database to be available"))
+            logger.info("Waiting for the common database to be available")
             return
         if not self._auth_database_is_available():
             event.add_status(WaitingStatus("Waiting for the auth database to be available"))
+            logger.info("Waiting for the auth database to be available")
             return
         if not self._container.can_connect():
             event.add_status(WaitingStatus("Waiting for container to be ready"))
+            logger.info("Waiting for container to be ready")
             return
         if not self._container.exists(path=BASE_CONFIG_PATH):
             event.add_status(WaitingStatus("Waiting for storage to be attached"))
+            logger.info("Waiting for storage to be attached")
             return
         if not self._config_file_exists():
             event.add_status(WaitingStatus("Waiting for config file to be stored"))
+            logger.info("Waiting for config file to be stored")
             return
         if not self._webui_service_is_running():
             event.add_status(WaitingStatus("Waiting for webui service to start"))
