@@ -83,6 +83,7 @@ class TestCharm(unittest.TestCase):
     ):
         self.harness.add_storage("config", attach=True)
         self.harness.container_pebble_ready("webui")
+        self.harness.evaluate_status()
         self.assertEqual(
             self.harness.model.unit.status,
             BlockedStatus("Waiting for common_database relation to be created"),
@@ -94,6 +95,7 @@ class TestCharm(unittest.TestCase):
         self.harness.set_can_connect(container="webui", val=True)
         self.harness.container_pebble_ready("webui")
         self._create_common_database_relation_and_populate_data()
+        self.harness.evaluate_status()
         self.assertEqual(
             self.harness.model.unit.status,
             BlockedStatus("Waiting for auth_database relation to be created"),
@@ -215,6 +217,7 @@ class TestCharm(unittest.TestCase):
         self._create_auth_database_relation_and_populate_data()
 
         self.harness.container_pebble_ready("webui")
+        self.harness.evaluate_status()
 
         self.assertEqual(self.harness.model.unit.status, ActiveStatus())
 
@@ -226,6 +229,7 @@ class TestCharm(unittest.TestCase):
 
         self._create_common_database_relation_and_populate_data()
         self._create_auth_database_relation_and_populate_data()
+        self.harness.evaluate_status()
         self.assertEqual(self.harness.model.unit.status, ActiveStatus())
 
     def test_given_container_is_ready_and_storage_attached_when_db_enpoints_changed_then_status_is_active(  # noqa: E501
@@ -241,7 +245,7 @@ class TestCharm(unittest.TestCase):
             app_or_unit="mongodb",
             key_values={"endpoints": "some-endpoint"},
         )
-
+        self.harness.evaluate_status()
         self.assertEqual(self.harness.model.unit.status, ActiveStatus())
 
     def test_given_charm_active_status_when_database_relation_breaks_then_status_is_blocked(
@@ -254,15 +258,17 @@ class TestCharm(unittest.TestCase):
         self.harness.container_pebble_ready("webui")
 
         self.harness.remove_relation(database_relation_id)
-
+        self.harness.evaluate_status()
         self.assertEqual(
-            self.harness.model.unit.status, BlockedStatus("Waiting for common_database relation")
+            self.harness.model.unit.status,
+            BlockedStatus("Waiting for common_database relation to be created"),
         )
 
     def test_given_storage_not_attached_when_on_databases_are_created_then_status_is_waiting(self):
         self.harness.set_can_connect(container="webui", val=True)
         self._create_common_database_relation_and_populate_data()
         self._create_auth_database_relation_and_populate_data()
+        self.harness.evaluate_status()
         self.assertEqual(
             self.harness.model.unit.status, WaitingStatus("Waiting for storage to be attached")
         )
@@ -275,6 +281,7 @@ class TestCharm(unittest.TestCase):
 
         self._create_common_database_relation_and_populate_data()
         self._create_auth_database_relation_and_populate_data()
+        self.harness.evaluate_status()
 
         self.assertEqual(
             self.harness.model.unit.status, WaitingStatus("Waiting for container to be ready")
@@ -291,6 +298,7 @@ class TestCharm(unittest.TestCase):
             app_or_unit="mongodb",
             key_values={"endpoints": "some endpoint"},
         )
+        self.harness.evaluate_status()
         self.assertEqual(
             self.harness.model.unit.status, WaitingStatus("Waiting for storage to be attached")
         )
@@ -327,4 +335,69 @@ class TestCharm(unittest.TestCase):
         )
         patch_set_management_url.assert_called_once_with(
             management_url="http://10.0.0.1:5000",
+        )
+
+    def test_given_common_db_relation_is_created_but_not_available_when_collect_status_then_status_is_waiting(  # noqa: E501
+        self,
+    ):
+        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.add_storage("config", attach=True)
+        self.harness.add_relation(COMMON_DATABASE_RELATION_NAME, "mongodb")
+        self._create_auth_database_relation_and_populate_data()
+
+        self.harness.evaluate_status()
+
+        self.assertEqual(
+            self.harness.model.unit.status,
+            WaitingStatus("Waiting for the common database to be available"),
+        )
+
+    def test_given_auth_db_relation_is_created_but_not_available_when_collect_status_then_status_is_waiting(  # noqa: E501
+        self,
+    ):
+        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.add_storage("config", attach=True)
+        self.harness.add_relation(AUTH_DATABASE_RELATION_NAME, "mongodb")
+        self._create_common_database_relation_and_populate_data()
+
+        self.harness.evaluate_status()
+
+        self.assertEqual(
+            self.harness.model.unit.status,
+            WaitingStatus("Waiting for the auth database to be available"),
+        )
+
+    def test_given_config_file_does_not_exist_when_collect_status_then_status_is_waiting(self):
+        self._create_common_database_relation_and_populate_data()
+        self._create_auth_database_relation_and_populate_data()
+        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.add_storage("config", attach=True)
+
+        self.harness.evaluate_status()
+
+        self.assertEqual(
+            self.harness.model.unit.status, WaitingStatus("Waiting for config file to be stored")
+        )
+
+    def test_given_service_is_not_running_when_collect_status_then_status_is_waiting(self):
+        self._create_common_database_relation_and_populate_data()
+        self._create_auth_database_relation_and_populate_data()
+        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.add_storage("config", attach=True)
+
+        root = self.harness.get_filesystem_root("webui")
+        (root / "etc/webui/webuicfg.conf").write_text("something")
+
+        self.harness.evaluate_status()
+        self.assertEqual(
+            self.harness.model.unit.status, WaitingStatus("Waiting for webui service to start")
+        )
+
+    def test_given_unit_is_not_leader_when_collect_status_then_status_is_blocked(self):
+        self.harness.set_leader(is_leader=False)
+        self.harness.evaluate_status()
+
+        self.assertEqual(
+            self.harness.model.unit.status,
+            BlockedStatus("Scaling is not implemented for this charm"),
         )

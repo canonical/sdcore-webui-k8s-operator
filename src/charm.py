@@ -15,7 +15,7 @@ from charms.sdcore_webui_k8s.v0.sdcore_management import (  # type: ignore[impor
     SdcoreManagementProvides,
 )
 from jinja2 import Environment, FileSystemLoader
-from ops import ActiveStatus, BlockedStatus, RelationBrokenEvent, WaitingStatus
+from ops import ActiveStatus, BlockedStatus, CollectStatusEvent, ModelError, WaitingStatus
 from ops.charm import CharmBase, EventBase
 from ops.main import main
 from ops.pebble import Layer
@@ -79,13 +79,13 @@ class WebuiOperatorCharm(CharmBase):
 
     def __init__(self, *args):
         super().__init__(*args)
+        self.framework.observe(self.on.collect_unit_status, self._on_collect_unit_status)
         if not self.unit.is_leader():
             # NOTE: In cases where leader status is lost before the charm is
             # finished processing all teardown events, this prevents teardown
             # event code from running. Luckily, for this charm, none of the
             # teardown code is necessary to preform if we're removing the
             # charm.
-            self.unit.status = BlockedStatus("Scaling is not implemented for this charm")
             return
         self._container_name = self._service_name = "webui"
         self._container = self.unit.get_container(self._container_name)
@@ -106,13 +106,7 @@ class WebuiOperatorCharm(CharmBase):
         self.unit.set_ports(GRPC_PORT, WEBUI_URL_PORT)
         self.framework.observe(self.on.webui_pebble_ready, self._configure_webui)
         self.framework.observe(self.on.common_database_relation_joined, self._configure_webui)
-        self.framework.observe(
-            self.on.common_database_relation_broken, self._on_common_database_relation_broken
-        )
         self.framework.observe(self.on.auth_database_relation_joined, self._configure_webui)
-        self.framework.observe(
-            self.on.auth_database_relation_broken, self._on_auth_database_relation_broken
-        )
         self.framework.observe(self._common_database.on.database_created, self._configure_webui)
         self.framework.observe(self._auth_database.on.database_created, self._configure_webui)
         self.framework.observe(self._common_database.on.endpoints_changed, self._configure_webui)
@@ -134,19 +128,14 @@ class WebuiOperatorCharm(CharmBase):
         """
         for relation in [COMMON_DATABASE_RELATION_NAME, AUTH_DATABASE_RELATION_NAME]:
             if not self._relation_created(relation):
-                self.unit.status = BlockedStatus(f"Waiting for {relation} relation to be created")
                 return
         if not self._common_database_is_available():
-            self.unit.status = WaitingStatus("Waiting for the common database to be available")
             return
         if not self._auth_database_is_available():
-            self.unit.status = WaitingStatus("Waiting for the auth database to be available")
             return
         if not self._container.can_connect():
-            self.unit.status = WaitingStatus("Waiting for container to be ready")
             return
         if not self._container.exists(path=BASE_CONFIG_PATH):
-            self.unit.status = WaitingStatus("Waiting for storage to be attached")
             return
 
         config_file_content = render_config_file(
@@ -159,7 +148,63 @@ class WebuiOperatorCharm(CharmBase):
         self._container.add_layer("webui", self._pebble_layer, combine=True)
         self._container.replan()
         self._container.restart(self._service_name)
-        self.unit.status = ActiveStatus()
+
+    def _on_collect_unit_status(self, event: CollectStatusEvent):
+        """Check the unit status and set to Unit when CollectStatusEvent is fired.
+
+        Args:
+            event: CollectStatusEvent
+        """
+        if not self.unit.is_leader():
+            # NOTE: In cases where leader status is lost before the charm is
+            # finished processing all teardown events, this prevents teardown
+            # event code from running. Luckily, for this charm, none of the
+            # teardown code is necessary to preform if we're removing the
+            # charm.
+            event.add_status(BlockedStatus("Scaling is not implemented for this charm"))
+            logger.info("Scaling is not implemented for this charm")
+            return
+        for relation in [COMMON_DATABASE_RELATION_NAME, AUTH_DATABASE_RELATION_NAME]:
+            if not self._relation_created(relation):
+                event.add_status(BlockedStatus(f"Waiting for {relation} relation to be created"))
+                logger.info(f"Waiting for {relation} relation to be created")
+                return
+        if not self._common_database_is_available():
+            event.add_status(WaitingStatus("Waiting for the common database to be available"))
+            logger.info("Waiting for the common database to be available")
+            return
+        if not self._auth_database_is_available():
+            event.add_status(WaitingStatus("Waiting for the auth database to be available"))
+            logger.info("Waiting for the auth database to be available")
+            return
+        if not self._container.can_connect():
+            event.add_status(WaitingStatus("Waiting for container to be ready"))
+            logger.info("Waiting for container to be ready")
+            return
+        if not self._container.exists(path=BASE_CONFIG_PATH):
+            event.add_status(WaitingStatus("Waiting for storage to be attached"))
+            logger.info("Waiting for storage to be attached")
+            return
+        if not self._config_file_exists():
+            event.add_status(WaitingStatus("Waiting for config file to be stored"))
+            logger.info("Waiting for config file to be stored")
+            return
+        if not self._webui_service_is_running():
+            event.add_status(WaitingStatus("Waiting for webui service to start"))
+            logger.info("Waiting for webui service to start")
+            return
+
+        event.add_status(ActiveStatus())
+
+    def _webui_service_is_running(self) -> bool:
+        """Check if the webui service is running."""
+        if not self._container.can_connect():
+            return False
+        try:
+            service = self._container.get_service(self._service_name)
+        except ModelError:
+            return False
+        return service.is_running()
 
     def _get_common_database_url(self) -> str:
         """Returns the common database url.
@@ -217,26 +262,6 @@ class WebuiOperatorCharm(CharmBase):
         self._sdcore_management.set_management_url(
             management_url=self._get_webui_endpoint_url(),
         )
-
-    def _on_common_database_relation_broken(self, event: RelationBrokenEvent) -> None:
-        """Event handler for common database relation broken.
-
-        Args:
-            event: Juju relation broken event
-        """
-        if not self.model.relations[COMMON_DATABASE_RELATION_NAME]:
-            self.unit.status = BlockedStatus(
-                f"Waiting for {COMMON_DATABASE_RELATION_NAME} relation"
-            )
-
-    def _on_auth_database_relation_broken(self, event: RelationBrokenEvent) -> None:
-        """Event handler for auth database relation broken.
-
-        Args:
-            event: Juju relation broken event
-        """
-        if not self.model.relations[AUTH_DATABASE_RELATION_NAME]:
-            self.unit.status = BlockedStatus(f"Waiting for {AUTH_DATABASE_RELATION_NAME} relation")
 
     def _write_config_file(self, content: str) -> None:
         """Writes configuration file based on provided content.
