@@ -112,7 +112,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 1
+LIBPATCH = 2
 
 logger = logging.getLogger(__name__)
 """Schemas definition for the provider and requirer sides of the `sdcore_management` interface.
@@ -146,7 +146,7 @@ class ProviderSchema(DataBagSchema):
 
 
 def data_is_valid(data: dict) -> bool:
-    """Returns whether data is valid.
+    """Return whether data is valid.
 
     Args:
         data (dict): Data to be validated.
@@ -171,13 +171,13 @@ class ManagementUrlAvailable(EventBase):
         self.management_url = management_url
 
     def snapshot(self) -> dict:
-        """Returns snapshot."""
+        """Return snapshot."""
         return {
             "management_url": self.management_url,
         }
 
     def restore(self, snapshot: dict) -> None:
-        """Restores snapshot."""
+        """Restore snapshot."""
         self.management_url = snapshot["management_url"]
 
 
@@ -200,7 +200,7 @@ class SdcoreManagementRequires(Object):
         self.framework.observe(charm.on[relation_name].relation_changed, self._on_relation_changed)
 
     def _on_relation_changed(self, event: RelationChangedEvent) -> None:
-        """Handler triggered on relation changed event.
+        """Handle relation changed event.
 
         Args:
             event (RelationChangedEvent): Juju event.
@@ -215,7 +215,7 @@ class SdcoreManagementRequires(Object):
 
     @property
     def management_url(self) -> Optional[str]:
-        """Returns the address of the management endpoint.
+        """Return the address of the management endpoint.
 
         Returns:
             str: Endpoint address.
@@ -230,7 +230,7 @@ class SdcoreManagementRequires(Object):
         """Get relation data for the remote application.
 
         Args:
-            Relation: Juju relation object (optional).
+            relation: Juju relation object (optional).
 
         Returns:
             Dict: Relation data for the remote application
@@ -260,7 +260,7 @@ class SdcoreManagementProvides(Object):
         self.charm = charm
 
     def set_management_url(self, management_url: str) -> None:
-        """Sets the address of the management endpoint.
+        """Set the address of the management endpoint.
 
         Args:
             management_url (str): Configuration service address.

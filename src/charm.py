@@ -35,7 +35,7 @@ LOGGING_RELATION_NAME = "logging"
 
 
 def _get_pod_ip() -> Optional[str]:
-    """Returns the pod IP using juju client.
+    """Return the pod IP using juju client.
 
     Returns:
         str: The pod IP.
@@ -53,7 +53,7 @@ def render_config_file(
     auth_database_name: str,
     auth_database_url: str,
 ) -> str:
-    """Renders webui configuration file based on Jinja template.
+    """Render webui configuration file based on Jinja template.
 
     Args:
         common_database_name: Common Database Name
@@ -84,7 +84,7 @@ class WebuiOperatorCharm(CharmBase):
             # NOTE: In cases where leader status is lost before the charm is
             # finished processing all teardown events, this prevents teardown
             # event code from running. Luckily, for this charm, none of the
-            # teardown code is necessary to preform if we're removing the
+            # teardown code is necessary to perform if we're removing the
             # charm.
             return
         self._container_name = self._service_name = "webui"
@@ -118,10 +118,9 @@ class WebuiOperatorCharm(CharmBase):
         self.framework.observe(self.on.config_changed, self._publish_sdcore_management_url)
 
     def _configure_webui(self, event: EventBase) -> None:
-        """Main callback function of the Webui operator.
+        """Handle config changes.
 
-        Handles config changes.
-        Manages pebble layer and Juju unit status.
+        Manage pebble layer and Juju unit status.
 
         Args:
             event: Juju event
@@ -159,7 +158,7 @@ class WebuiOperatorCharm(CharmBase):
             # NOTE: In cases where leader status is lost before the charm is
             # finished processing all teardown events, this prevents teardown
             # event code from running. Luckily, for this charm, none of the
-            # teardown code is necessary to preform if we're removing the
+            # teardown code is necessary to perform if we're removing the
             # charm.
             event.add_status(BlockedStatus("Scaling is not implemented for this charm"))
             logger.info("Scaling is not implemented for this charm")
@@ -207,7 +206,7 @@ class WebuiOperatorCharm(CharmBase):
         return service.is_running()
 
     def _get_common_database_url(self) -> str:
-        """Returns the common database url.
+        """Return the common database url.
 
         Returns:
             str: The common database url.
@@ -219,7 +218,7 @@ class WebuiOperatorCharm(CharmBase):
         ].split(",")[0]
 
     def _get_auth_database_url(self) -> str:
-        """Returns the authentication database url.
+        """Return the authentication database url.
 
         Returns:
             str: The authentication database url.
@@ -231,7 +230,7 @@ class WebuiOperatorCharm(CharmBase):
         ].split(",")[0]
 
     def _common_database_is_available(self) -> bool:
-        """Returns whether common database relation is available.
+        """Return whether common database relation is available.
 
         Returns:
             bool: Whether common database relation is available.
@@ -239,7 +238,7 @@ class WebuiOperatorCharm(CharmBase):
         return bool(self._common_database.is_resource_created())
 
     def _auth_database_is_available(self) -> bool:
-        """Returns whether authentication database relation is available.
+        """Return whether authentication database relation is available.
 
         Returns:
             bool: Whether authentication database relation is available.
@@ -247,7 +246,7 @@ class WebuiOperatorCharm(CharmBase):
         return bool(self._auth_database.is_resource_created())
 
     def _publish_sdcore_management_url(self, event: EventBase):
-        """Sets the webui url in the sdcore management relation.
+        """Set the webui url in the sdcore management relation.
 
         Passes the url of webui to sdcore management relation.
 
@@ -264,7 +263,7 @@ class WebuiOperatorCharm(CharmBase):
         )
 
     def _write_config_file(self, content: str) -> None:
-        """Writes configuration file based on provided content.
+        """Write configuration file based on provided content.
 
         Args:
             content: Configuration file content
@@ -273,11 +272,11 @@ class WebuiOperatorCharm(CharmBase):
         logger.info("Pushed %s config file", CONFIG_FILE_NAME)
 
     def _config_file_exists(self) -> bool:
-        """Returns whether the configuration file exists."""
+        """Return whether the configuration file exists."""
         return bool(self._container.exists(f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}"))
 
     def _relation_created(self, relation_name: str) -> bool:
-        """Returns whether a given Juju relation was crated.
+        """Return whether a given Juju relation was created.
 
         Args:
             relation_name (str): Relation name
@@ -288,7 +287,7 @@ class WebuiOperatorCharm(CharmBase):
         return bool(self.model.get_relation(relation_name))
 
     def _get_webui_endpoint_url(self) -> Optional[str]:
-        """Returns the webui endpoint url.
+        """Return the webui endpoint url.
 
         Returns:
             str: The webui endpoint url.
