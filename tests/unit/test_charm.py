@@ -4,17 +4,16 @@
 import unittest
 from unittest.mock import patch
 
+from charm import WebuiOperatorCharm
 from ops import testing
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
-
-from charm import WebuiOperatorCharm
 
 COMMON_DATABASE_RELATION_NAME = "common_database"
 AUTH_DATABASE_RELATION_NAME = "auth_database"
 
 
 def read_file_content(path: str) -> str:
-    """Reads a file and returns as a string.
+    """Read a file and returns as a string.
 
     Args:
         path (str): path to the file.
