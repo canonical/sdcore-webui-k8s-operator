@@ -1,7 +1,9 @@
 codespell
 coverage[toml]
 mypy
+pydantic
 pytest
+pytest-interface-tester
 pytest-operator
 ruff
 types-PyYAML
