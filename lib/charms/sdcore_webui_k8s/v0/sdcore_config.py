@@ -248,7 +248,6 @@ class SdcoreConfigRequires(Object):
         """
         return self._get_remote_app_relation_data()
 
-
     def _get_remote_app_relation_data(
         self, relation: Optional[Relation] = None
     ) -> Optional[str]:
@@ -316,27 +315,3 @@ class SdcoreConfigProvides(Object):
             raise RuntimeError(f"Relation {self.relation_name} not created yet.")
 
         relation.data[self.charm.app].update({"webui_url": webui_url})
-
-    def set_webui_url_in_all_relations(self, webui_url: str) -> None:
-        """Set Webui URL in applications for all applications.
-
-        Args:
-            webui_url (str): Webui GRPC service address
-
-        Returns:
-            None
-        """
-        if not self.charm.unit.is_leader():
-            raise RuntimeError("Unit must be leader to set application relation data.")
-
-        if not data_is_valid(data={"webui_url": webui_url}):
-            raise ValueError(f"Invalid url: {webui_url}")
-
-        relations = self.model.relations[self.relation_name]
-
-        if not relations:
-            raise RuntimeError(f"Relation {self.relation_name} not created yet.")
-
-        for relation in relations:
-            relation.data[self.charm.app].update({"webui_url": webui_url})
-
