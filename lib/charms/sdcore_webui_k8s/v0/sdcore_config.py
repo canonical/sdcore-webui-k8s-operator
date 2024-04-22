@@ -335,7 +335,8 @@ class SdcoreConfigProvides(Object):
         relations = self.model.relations[self.relation_name]
 
         if not relations:
-            raise RuntimeError(f"Relation {self.relation_name} not created yet.")
+            logger.warning("No relations found: %s", self.relation_name)
+            return
 
         for relation in relations:
             relation.data[self.charm.app].update({"webui_url": webui_url})
