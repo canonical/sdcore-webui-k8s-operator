@@ -17,39 +17,44 @@ logger = logging.getLogger(__name__)
 METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
 APP_NAME = METADATA["name"]
 DATABASE_APP_NAME = "mongodb-k8s"
+DATABASE_APP_CHANNEL = "6/beta"
 COMMON_DATABASE_RELATION_NAME = "common_database"
 AUTH_DATABASE_RELATION_NAME = "auth_database"
 LOGGING_RELATION_NAME = "logging"
 GRAFANA_AGENT_APP_NAME = "grafana-agent-k8s"
+GRAFANA_AGENT_APP_CHANNEL = "latest/stable"
 
 
-async def _deploy_database(ops_test):
+async def _deploy_database(ops_test: OpsTest):
     """Deploy a MongoDB."""
+    assert ops_test.model
     await ops_test.model.deploy(
         DATABASE_APP_NAME,
         application_name=DATABASE_APP_NAME,
-        channel="6/beta",
+        channel=DATABASE_APP_CHANNEL,
         trust=True,
     )
 
 
-async def _deploy_grafana_agent(ops_test):
+async def _deploy_grafana_agent(ops_test: OpsTest):
     """Deploy Grafana Agent."""
+    assert ops_test.model
     await ops_test.model.deploy(
         GRAFANA_AGENT_APP_NAME,
         application_name=GRAFANA_AGENT_APP_NAME,
-        channel="stable",
+        channel=GRAFANA_AGENT_APP_CHANNEL,
     )
 
 
 @pytest.fixture(scope="module")
 @pytest.mark.abort_on_fail
-async def build_and_deploy(ops_test):
+async def build_and_deploy(ops_test: OpsTest):
     """Build the charm-under-test and deploy it."""
     charm = await ops_test.build_charm(".")
     resources = {
         "webui-image": METADATA["resources"]["webui-image"]["upstream-source"],
     }
+    assert ops_test.model
     await ops_test.model.deploy(
         charm,
         resources=resources,
@@ -62,9 +67,9 @@ async def build_and_deploy(ops_test):
 
 @pytest.mark.abort_on_fail
 async def test_given_charm_is_built_when_deployed_then_status_is_blocked(
-    ops_test,
-    build_and_deploy,
+    ops_test: OpsTest, build_and_deploy
 ):
+    assert ops_test.model
     await ops_test.model.wait_for_idle(
         apps=[APP_NAME],
         status="blocked",
@@ -73,10 +78,8 @@ async def test_given_charm_is_built_when_deployed_then_status_is_blocked(
 
 
 @pytest.mark.abort_on_fail
-async def test_relate_and_wait_for_active_status(
-    ops_test,
-    build_and_deploy,
-):
+async def test_relate_and_wait_for_active_status(ops_test: OpsTest, build_and_deploy):
+    assert ops_test.model
     await ops_test.model.integrate(
         relation1=f"{APP_NAME}:{COMMON_DATABASE_RELATION_NAME}", relation2=f"{DATABASE_APP_NAME}"
     )
