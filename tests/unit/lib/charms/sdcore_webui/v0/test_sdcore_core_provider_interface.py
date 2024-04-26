@@ -98,3 +98,24 @@ class TestSdcoreConfigProvider(unittest.TestCase):
             relation_id=relation_id_2, app_or_unit=self.harness.charm.app.name
         )
         self.assertEqual(relation_data_2["webui_url"], expected_webui_url)
+
+    def test_given_unit_is_leader_and_multiple_sdcore_config_relations_when_set_webui_information_in_all_relations_then_all_relations_are_updated(  # noqa: E501
+        self,
+    ):
+        self.harness.set_leader(is_leader=True)
+        remote_app_name_1 = self.remote_app_name
+        remote_app_name_2 = f"second-{self.remote_app_name}"
+        expected_webui_url = "sdcore-webui-k8s:9876"
+        relation_id_1 = self._create_relation(remote_app_name=remote_app_name_1)
+        relation_data_1 = self.harness.get_relation_data(
+            relation_id=relation_id_1, app_or_unit=self.harness.charm.app.name
+        )
+        relation_id_2 = self._create_relation(remote_app_name=remote_app_name_2)
+        relation_data_2 = self.harness.get_relation_data(
+            relation_id=relation_id_2, app_or_unit=self.harness.charm.app.name
+        )
+
+        self.harness.charm.webui_url_provider.set_webui_url_in_all_relations(webui_url=expected_webui_url)
+
+        self.assertEqual(relation_data_1["webui_url"], expected_webui_url)
+        self.assertEqual(relation_data_2["webui_url"], expected_webui_url)
