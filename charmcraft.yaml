@@ -1,3 +1,50 @@
+name: sdcore-webui-k8s
+
+summary: A Charmed Operator for SD-Core's Webui component.
+description: |
+  A Charmed Operator for SD-Core's Webui component, a configuration service in SD-Core.
+docs:
+  website:
+    - https://charmhub.io/sdcore-webui-k8s
+  source:
+    - https://github.com/canonical/sdcore-webui-k8s-operator
+  issues:
+    - https://github.com/canonical/sdcore-webui-k8s-operator/issues
+
+containers:
+  webui:
+    resource: webui-image
+    mounts:
+      - storage: config
+        location: /etc/webui/
+
+resources:
+  webui-image:
+    type: oci-image
+    description: OCI image for 5G webui
+    upstream-source: ghcr.io/canonical/sdcore-webui:1.4.0
+
+storage:
+  config:
+    type: filesystem
+    minimum-size: 1M
+
+requires:
+  common_database:
+    interface: mongodb_client
+  auth_database:
+    interface: mongodb_client
+  logging:
+    interface: loki_push_api
+
+provides:
+  sdcore-management:
+    interface: sdcore_management
+
+assumes:
+  - k8s-api
+  - juju >= 3.4
+
 type: charm
 bases:
   - build-on:

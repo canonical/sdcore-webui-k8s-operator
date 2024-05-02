@@ -14,7 +14,7 @@ from pytest_operator.plugin import OpsTest
 
 logger = logging.getLogger(__name__)
 
-METADATA = yaml.safe_load(Path("./metadata.yaml").read_text())
+METADATA = yaml.safe_load(Path("./charmcraft.yaml").read_text())
 APP_NAME = METADATA["name"]
 DATABASE_APP_NAME = "mongodb-k8s"
 DATABASE_APP_CHANNEL = "6/beta"
