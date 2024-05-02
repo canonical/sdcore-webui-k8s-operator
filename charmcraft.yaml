@@ -3,7 +3,7 @@ name: sdcore-webui-k8s
 summary: A Charmed Operator for SD-Core's Webui component.
 description: |
   A Charmed Operator for SD-Core's Webui component, a configuration service in SD-Core.
-docs:
+links:
   website:
     - https://charmhub.io/sdcore-webui-k8s
   source:
