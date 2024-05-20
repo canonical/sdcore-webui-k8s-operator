@@ -1,6 +1,7 @@
 codespell
 coverage[toml]
 mypy
+parameterized
 pydantic
 pytest
 pytest-interface-tester
