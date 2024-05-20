@@ -29,3 +29,8 @@ output "sdcore_management_endpoint" {
   description = "Name of the endpoint to provide `sdcore_management` interface."
   value       = "sdcore-management"
 }
+
+output "sdcore_config_endpoint" {
+  description = "Name of the endpoint to provide `sdcore_config` interface."
+  value       = "sdcore-config"
+}

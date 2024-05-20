@@ -11,12 +11,15 @@ from typing import Optional
 
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires  # type: ignore[import]
 from charms.loki_k8s.v1.loki_push_api import LogForwarder  # type: ignore[import]
+from charms.sdcore_webui_k8s.v0.sdcore_config import (  # type: ignore[import]
+    SdcoreConfigProvides,
+)
 from charms.sdcore_webui_k8s.v0.sdcore_management import (  # type: ignore[import]
     SdcoreManagementProvides,
 )
 from jinja2 import Environment, FileSystemLoader
 from ops import ActiveStatus, BlockedStatus, CollectStatusEvent, ModelError, WaitingStatus
-from ops.charm import CharmBase, EventBase
+from ops.charm import CharmBase, EventBase, RelationJoinedEvent
 from ops.main import main
 from ops.pebble import Layer
 
@@ -29,6 +32,7 @@ AUTH_DATABASE_RELATION_NAME = "auth_database"
 AUTH_DATABASE_NAME = "authentication"
 COMMON_DATABASE_NAME = "free5gc"
 SDCORE_MANAGEMENT_RELATION_NAME = "sdcore-management"
+SDCORE_CONFIG_RELATION_NAME = "sdcore-config"
 GRPC_PORT = 9876
 WEBUI_URL_PORT = 5000
 LOGGING_RELATION_NAME = "logging"
@@ -103,24 +107,28 @@ class WebuiOperatorCharm(CharmBase):
         )
         self._logging = LogForwarder(charm=self, relation_name=LOGGING_RELATION_NAME)
         self._sdcore_management = SdcoreManagementProvides(self, SDCORE_MANAGEMENT_RELATION_NAME)
+        self._sdcore_config = SdcoreConfigProvides(self, SDCORE_CONFIG_RELATION_NAME)
         self.unit.set_ports(GRPC_PORT, WEBUI_URL_PORT)
         self.framework.observe(self.on.webui_pebble_ready, self._configure_webui)
         self.framework.observe(self.on.common_database_relation_joined, self._configure_webui)
         self.framework.observe(self.on.auth_database_relation_joined, self._configure_webui)
+        self.framework.observe(
+            self.on.sdcore_config_relation_joined, self._on_sdcore_config_relation_joined
+        )
         self.framework.observe(self._common_database.on.database_created, self._configure_webui)
         self.framework.observe(self._auth_database.on.database_created, self._configure_webui)
         self.framework.observe(self._common_database.on.endpoints_changed, self._configure_webui)
         self.framework.observe(self._auth_database.on.endpoints_changed, self._configure_webui)
         self.framework.observe(
-            self.on.sdcore_management_relation_joined, self._publish_sdcore_management_url
+            self.on.sdcore_management_relation_joined, self._on_sdcore_management_relation_joined
         )
         # Handling config changed event to publish the new url if the unit reboots and gets new IP
-        self.framework.observe(self.on.config_changed, self._publish_sdcore_management_url)
+        self.framework.observe(self.on.config_changed, self._configure_webui)
 
     def _configure_webui(self, event: EventBase) -> None:
-        """Handle config changes.
+        """Handle the config changes.
 
-        Manage pebble layer and Juju unit status.
+        Manage pebble layer and Juju unit status because this is the main callback method.
 
         Args:
             event: Juju event
@@ -128,25 +136,24 @@ class WebuiOperatorCharm(CharmBase):
         for relation in [COMMON_DATABASE_RELATION_NAME, AUTH_DATABASE_RELATION_NAME]:
             if not self._relation_created(relation):
                 return
-        if not self._common_database_is_available():
+        if not self._common_database_resource_is_available():
             return
-        if not self._auth_database_is_available():
+        if not self._auth_database_resource_is_available():
             return
         if not self._container.can_connect():
             return
         if not self._container.exists(path=BASE_CONFIG_PATH):
             return
 
-        config_file_content = render_config_file(
-            common_database_name=COMMON_DATABASE_NAME,
-            common_database_url=self._get_common_database_url(),
-            auth_database_name=AUTH_DATABASE_NAME,
-            auth_database_url=self._get_auth_database_url(),
-        )
-        self._write_config_file(content=config_file_content)
-        self._container.add_layer("webui", self._pebble_layer, combine=True)
-        self._container.replan()
-        self._container.restart(self._service_name)
+        desired_config_file = self._generate_webui_config_file()
+
+        if config_update_required := self._is_config_update_required(desired_config_file):
+            self._write_config_file(content=desired_config_file)
+
+        self._configure_workload(restart=config_update_required)
+        self._publish_sdcore_management_url()
+        self._publish_webui_config_url_for_all_requirers()
+
 
     def _on_collect_unit_status(self, event: CollectStatusEvent):
         """Check the unit status and set to Unit when CollectStatusEvent is fired.
@@ -168,11 +175,11 @@ class WebuiOperatorCharm(CharmBase):
                 event.add_status(BlockedStatus(f"Waiting for {relation} relation to be created"))
                 logger.info(f"Waiting for {relation} relation to be created")
                 return
-        if not self._common_database_is_available():
+        if not self._common_database_resource_is_available():
             event.add_status(WaitingStatus("Waiting for the common database to be available"))
             logger.info("Waiting for the common database to be available")
             return
-        if not self._auth_database_is_available():
+        if not self._auth_database_resource_is_available():
             event.add_status(WaitingStatus("Waiting for the auth database to be available"))
             logger.info("Waiting for the auth database to be available")
             return
@@ -195,8 +202,45 @@ class WebuiOperatorCharm(CharmBase):
 
         event.add_status(ActiveStatus())
 
+    def _on_sdcore_config_relation_joined(self, event: RelationJoinedEvent) -> None:
+        """Handle sdcore_config relation joined event.
+
+        Set the Webui config URL in the relation databag when Webui becomes accessible.
+
+        Args:
+            event: RelationJoinedEvent
+        """
+        if not self._webui_service_is_running():
+            return
+
+        webui_config_url = self._get_webui_config_url()
+        self._sdcore_config.set_webui_url(
+            webui_url=webui_config_url,
+            relation_id=event.relation.id,
+        )
+
+    def _generate_webui_config_file(self) -> str:
+        return render_config_file(
+            common_database_name=COMMON_DATABASE_NAME,
+            common_database_url=self._get_common_database_url(),
+            auth_database_name=AUTH_DATABASE_NAME,
+            auth_database_url=self._get_auth_database_url(),
+        )
+
+    def _configure_workload(self, restart: bool = False) -> None:
+        plan = self._container.get_plan()
+        if plan.services != self._pebble_layer.services:
+            self._container.add_layer(
+                self._container_name, self._pebble_layer, combine=True
+            )
+            self._container.replan()
+            logger.info("New layer added: %s", self._pebble_layer)
+        if restart:
+            self._container.restart(self._service_name)
+            logger.info("Restarted container %s", self._service_name)
+            return
+
     def _webui_service_is_running(self) -> bool:
-        """Check if the webui service is running."""
         if not self._container.can_connect():
             return False
         try:
@@ -206,55 +250,51 @@ class WebuiOperatorCharm(CharmBase):
         return service.is_running()
 
     def _get_common_database_url(self) -> str:
-        """Return the common database url.
-
-        Returns:
-            str: The common database url.
-        """
-        if not self._common_database_is_available():
+        if not self._common_database_resource_is_available():
             raise RuntimeError(f"Database `{COMMON_DATABASE_NAME}` is not available")
         return self._common_database.fetch_relation_data()[self._common_database.relations[0].id][
             "uris"
         ].split(",")[0]
 
     def _get_auth_database_url(self) -> str:
-        """Return the authentication database url.
-
-        Returns:
-            str: The authentication database url.
-        """
-        if not self._auth_database_is_available():
+        if not self._auth_database_resource_is_available():
             raise RuntimeError(f"Database `{AUTH_DATABASE_NAME}` is not available")
         return self._auth_database.fetch_relation_data()[self._auth_database.relations[0].id][
             "uris"
         ].split(",")[0]
 
-    def _common_database_is_available(self) -> bool:
-        """Return whether common database relation is available.
+    def _is_config_update_required(self, content: str) -> bool:
+        if not self._config_file_is_written() or not self._config_file_content_matches(
+            content=content
+        ):
+            return True
+        return False
 
-        Returns:
-            bool: Whether common database relation is available.
-        """
+    def _config_file_is_written(self) -> bool:
+        return bool(self._container.exists(f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}"))
+
+    def _config_file_content_matches(self, content: str) -> bool:
+        if not self._container.exists(path=f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}"):
+            return False
+        existing_content = self._container.pull(path=f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}")
+        if existing_content.read() != content:
+            return False
+        return True
+
+    def _common_database_resource_is_available(self) -> bool:
         return bool(self._common_database.is_resource_created())
 
-    def _auth_database_is_available(self) -> bool:
-        """Return whether authentication database relation is available.
-
-        Returns:
-            bool: Whether authentication database relation is available.
-        """
+    def _auth_database_resource_is_available(self) -> bool:
         return bool(self._auth_database.is_resource_created())
 
-    def _publish_sdcore_management_url(self, event: EventBase):
-        """Set the webui url in the sdcore management relation.
+    def _on_sdcore_management_relation_joined(self, event: RelationJoinedEvent) -> None:
+        """Handle sdcore_management relation joined event.
 
-        Passes the url of webui to sdcore management relation.
+        Set the Webui endpoint URL in the relation databag when Webui endpoint URL is available.
 
         Args:
-            event (EventBase): Juju event
+            event: RelationJoinedEvent
         """
-        if not self._relation_created(SDCORE_MANAGEMENT_RELATION_NAME):
-            return
         if not self._get_webui_endpoint_url():
             event.defer()
             return
@@ -262,39 +302,38 @@ class WebuiOperatorCharm(CharmBase):
             management_url=self._get_webui_endpoint_url(),
         )
 
-    def _write_config_file(self, content: str) -> None:
-        """Write configuration file based on provided content.
+    def _publish_sdcore_management_url(self) -> None:
+        if not self._relation_created(SDCORE_MANAGEMENT_RELATION_NAME):
+            return
+        if not self._get_webui_endpoint_url():
+            return
+        self._sdcore_management.set_management_url(
+            management_url=self._get_webui_endpoint_url(),
+        )
 
-        Args:
-            content: Configuration file content
-        """
+    def _write_config_file(self, content: str) -> None:
         self._container.push(path=f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}", source=content)
         logger.info("Pushed %s config file", CONFIG_FILE_NAME)
 
     def _config_file_exists(self) -> bool:
-        """Return whether the configuration file exists."""
         return bool(self._container.exists(f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}"))
 
     def _relation_created(self, relation_name: str) -> bool:
-        """Return whether a given Juju relation was created.
-
-        Args:
-            relation_name (str): Relation name
-
-        Returns:
-            bool: Whether the relation was created.
-        """
         return bool(self.model.get_relation(relation_name))
 
     def _get_webui_endpoint_url(self) -> Optional[str]:
-        """Return the webui endpoint url.
-
-        Returns:
-            str: The webui endpoint url.
-        """
         if not _get_pod_ip():
             return None
         return f"http://{_get_pod_ip()}:{WEBUI_URL_PORT}"
+
+    def _get_webui_config_url(self) -> str:
+        return f"{self._service_name}:{GRPC_PORT}"
+
+    def _publish_webui_config_url_for_all_requirers(self) -> None:
+        if not self._relation_created(SDCORE_CONFIG_RELATION_NAME):
+            return
+        webui_config_url = self._get_webui_config_url()
+        self._sdcore_config.set_webui_url_in_all_relations(webui_url=webui_config_url)
 
     @property
     def _pebble_layer(self) -> Layer:

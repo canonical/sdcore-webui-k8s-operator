@@ -2,11 +2,11 @@
 # See LICENSE file for licensing details.
 
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from charm import WebuiOperatorCharm
 from ops import testing
-from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
+from ops.model import ActiveStatus, BlockedStatus, ModelError, WaitingStatus
 
 COMMON_DATABASE_RELATION_NAME = "common_database"
 AUTH_DATABASE_RELATION_NAME = "auth_database"
@@ -306,7 +306,7 @@ class TestCharm(unittest.TestCase):
     @patch(
         "charms.sdcore_webui_k8s.v0.sdcore_management.SdcoreManagementProvides.set_management_url"
     )
-    def test_given_webui_url_not_available_when_sdcore_management_relation_joined_then_url_not_set(  # noqa: E501
+    def test_given_webui_endpoint_url_not_available_when_sdcore_management_relation_joined_then_management_url_not_set(  # noqa: E501
         self,
         patch_set_management_url,
         patch_check_output,
@@ -322,7 +322,7 @@ class TestCharm(unittest.TestCase):
     @patch(
         "charms.sdcore_webui_k8s.v0.sdcore_management.SdcoreManagementProvides.set_management_url"
     )
-    def test_given_webui_url_available_when_sdcore_management_relation_joined_then_url_is_passed_in_relation(  # noqa: E501
+    def test_given_webui_endpoint_url_available_when_sdcore_management_relation_joined_then_management_url_is_passed_in_relation(  # noqa: E501
         self,
         patch_set_management_url,
         patch_check_output,
@@ -335,6 +335,88 @@ class TestCharm(unittest.TestCase):
         patch_set_management_url.assert_called_once_with(
             management_url="http://10.0.0.1:5000",
         )
+
+    @patch("charm.check_output")
+    @patch(
+        "charms.sdcore_webui_k8s.v0.sdcore_management.SdcoreManagementProvides.set_management_url"
+    )
+    def test_given_sdcore_management_relation_is_created_webui_endpoint_url_is_available_when_config_changed_pod_ip_updated_then_management_url_is_set_in_relations_with_updated_value(  # noqa: E501
+            self,
+            patch_set_management_url,
+            patch_check_output,
+    ):
+        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.add_storage("config", attach=True)
+        patch_check_output.return_value = b"10.0.0.1"
+        sdcore_management_relation = self.harness.add_relation("sdcore-management", "requirer")
+        self.harness.add_relation_unit(
+            relation_id=sdcore_management_relation, remote_unit_name="requirer/0"
+        )
+
+        patch_set_management_url.assert_called_once_with(management_url='http://10.0.0.1:5000')
+
+        patch_check_output.return_value = b"10.0.0.5"
+        self._create_common_database_relation_and_populate_data()
+        self._create_auth_database_relation_and_populate_data()
+        calls = [call(management_url='http://10.0.0.1:5000'), call(management_url='http://10.0.0.5:5000')]
+        patch_set_management_url.assert_has_calls(calls)
+
+    @patch("ops.model.Container.get_service")
+    @patch(
+        "charms.sdcore_webui_k8s.v0.sdcore_config.SdcoreConfigProvides.set_webui_url"
+    )
+    def test_given_webui_service_is_running_when_several_sdcore_config_relations_are_joined_then_config_url_is_set_in_the_relations(  # noqa: E501
+        self, patch_set_webui_url, patch_get_service
+    ):
+        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.add_storage("config", attach=True)
+        patch_get_service.side_effect = None
+        relation_id_1 = self.harness.add_relation("sdcore-config", "requirer1")
+        self.harness.add_relation_unit(
+            relation_id=relation_id_1, remote_unit_name="requirer1/0"
+        )
+        patch_set_webui_url.assert_called_with(webui_url="webui:9876", relation_id=relation_id_1)
+        relation_id_2 = self.harness.add_relation("sdcore-config", "requirer2")
+        self.harness.add_relation_unit(
+            relation_id=relation_id_2, remote_unit_name="requirer2/0"
+        )
+        patch_set_webui_url.assert_called_with(webui_url="webui:9876", relation_id=relation_id_2)
+
+    @patch("ops.model.Container.get_service")
+    @patch(
+        "charms.sdcore_webui_k8s.v0.sdcore_config.SdcoreConfigProvides.set_webui_url_in_all_relations"
+    )
+    def test_given_webui_service_is_running_sdcore_config_relation_is_joined_when_config_changed_then_config_url_is_set_in_all_relations(  # noqa: E501
+        self, patch_set_webui_url, patch_get_service
+    ):
+        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.add_storage("config", attach=True)
+        patch_get_service.side_effect = None
+        relation_id_1 = self.harness.add_relation("sdcore-config", "requirer1")
+        self.harness.add_relation_unit(
+            relation_id=relation_id_1, remote_unit_name="requirer1/0"
+        )
+
+        self._create_common_database_relation_and_populate_data()
+        self._create_auth_database_relation_and_populate_data()
+        patch_set_webui_url.assert_called_with(webui_url="webui:9876")
+
+    @patch("ops.model.Container.get_service")
+    @patch(
+        "charms.sdcore_webui_k8s.v0.sdcore_config.SdcoreConfigProvides.set_webui_url"
+    )
+    def test_given_webui_service_is_not_running_when_sdcore_config_relation_joined_then_url_is_not_set_in_relation(  # noqa: E501
+        self,
+        patch_set_webui_url, patch_get_service
+    ):
+        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.add_storage("config", attach=True)
+        patch_get_service.side_effect = ModelError()
+        relation_id = self.harness.add_relation("sdcore-config", "requirer")
+        self.harness.add_relation_unit(
+            relation_id=relation_id, remote_unit_name="requirer/0"
+        )
+        patch_set_webui_url.assert_not_called()
 
     def test_given_common_db_relation_is_created_but_not_available_when_collect_status_then_status_is_waiting(  # noqa: E501
         self,
