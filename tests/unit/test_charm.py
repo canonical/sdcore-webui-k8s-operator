@@ -293,7 +293,7 @@ class TestCharm:
             "Waiting for storage to be attached"
         )
 
-    def test_given_webui_url_not_available_when_sdcore_management_relation_joined_then_url_not_set(  # noqa: E501
+    def test_given_webui_endpoint_url_not_available_when_sdcore_management_relation_joined_then_management_url_not_set(  # noqa: E501
         self
     ):
         self.mock_check_output.return_value = ""
@@ -302,10 +302,14 @@ class TestCharm:
 
         self.mock_set_management_url.assert_not_called()
 
-    def test_given_webui_url_available_when_sdcore_management_relation_joined_then_url_is_passed_in_relation(  # noqa: E501
+    def test_given_webui_endpoint_url_available_when_sdcore_management_relation_joined_then_management_url_is_passed_in_relation(  # noqa: E501
         self
     ):
         pod_ip = "10.0.0.1"
+        self.harness.set_can_connect(container=CONTAINER, val=True)
+        self.harness.add_storage("config", attach=True)
+        self._create_common_database_relation_and_populate_data()
+        self._create_auth_database_relation_and_populate_data()
         self.mock_check_output.return_value = pod_ip.encode()
 
         self._create_sdcore_management_relation()
