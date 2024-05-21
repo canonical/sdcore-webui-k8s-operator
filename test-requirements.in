@@ -3,6 +3,7 @@ coverage[toml]
 mypy
 pydantic
 pytest
+pytest-asyncio>=v0.21.2  # https://github.com/pytest-dev/pytest/issues/12269
 pytest-interface-tester
 pytest-operator
 ruff
