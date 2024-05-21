@@ -16,7 +16,7 @@ from charms.sdcore_webui_k8s.v0.sdcore_management import (  # type: ignore[impor
 )
 from jinja2 import Environment, FileSystemLoader
 from ops import ActiveStatus, BlockedStatus, CollectStatusEvent, ModelError, WaitingStatus
-from ops.charm import CharmBase, EventBase, RelationJoinedEvent
+from ops.charm import CharmBase, EventBase
 from ops.main import main
 from ops.pebble import Layer
 
@@ -112,15 +112,16 @@ class WebuiOperatorCharm(CharmBase):
         self.framework.observe(self._common_database.on.endpoints_changed, self._configure_webui)
         self.framework.observe(self._auth_database.on.endpoints_changed, self._configure_webui)
         self.framework.observe(
-            self.on.sdcore_management_relation_joined, self._on_sdcore_management_relation_joined
+            self.on.sdcore_management_relation_joined, self._configure_webui
         )
         # Handling config changed event to publish the new url if the unit reboots and gets new IP
         self.framework.observe(self.on.config_changed, self._configure_webui)
 
     def _configure_webui(self, event: EventBase) -> None:
-        """Handle the config changes.
+        """Configure Webui configuration file and publishes the Webui management URL.
 
-        Manage pebble layer and Juju unit status because this is the main callback method.
+        The main callback method for `config changed`, `pebble ready`, `relation changed` e.g.
+        and custom events. Manages the Pebble services.
 
         Args:
             event: Juju event
@@ -143,8 +144,7 @@ class WebuiOperatorCharm(CharmBase):
             self._write_config_file(content=desired_config_file)
 
         self._configure_workload(restart=config_update_required)
-        self._publish_sdcore_management_url()
-
+        self._publish_sdcore_management_url(event)
 
     def _on_collect_unit_status(self, event: CollectStatusEvent):
         """Check the unit status and set to Unit when CollectStatusEvent is fired.
@@ -261,25 +261,18 @@ class WebuiOperatorCharm(CharmBase):
     def _auth_database_resource_is_available(self) -> bool:
         return bool(self._auth_database.is_resource_created())
 
-    def _on_sdcore_management_relation_joined(self, event: RelationJoinedEvent) -> None:
-        """Handle sdcore_management relation joined event.
+    def _publish_sdcore_management_url(self, event: EventBase):
+        """Set the webui url in the sdcore management relation.
 
-        Set the Webui endpoint URL in the relation databag when Webui endpoint URL is available.
+        Passes the url of webui to sdcore management relation.
 
         Args:
-            event: RelationJoinedEvent
+            event (EventBase): Juju event
         """
-        if not self._get_webui_endpoint_url():
-            event.defer()
-            return
-        self._sdcore_management.set_management_url(
-            management_url=self._get_webui_endpoint_url(),
-        )
-
-    def _publish_sdcore_management_url(self) -> None:
         if not self._relation_created(SDCORE_MANAGEMENT_RELATION_NAME):
             return
         if not self._get_webui_endpoint_url():
+            event.defer()
             return
         self._sdcore_management.set_management_url(
             management_url=self._get_webui_endpoint_url(),

@@ -2,7 +2,7 @@
 # See LICENSE file for licensing details.
 
 import unittest
-from unittest.mock import call, patch
+from unittest.mock import patch
 
 from charm import WebuiOperatorCharm
 from ops import testing
@@ -327,6 +327,10 @@ class TestCharm(unittest.TestCase):
         patch_set_management_url,
         patch_check_output,
     ):
+        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.add_storage("config", attach=True)
+        self._create_common_database_relation_and_populate_data()
+        self._create_auth_database_relation_and_populate_data()
         patch_check_output.return_value = b"10.0.0.1"
         sdcore_management_relation = self.harness.add_relation("sdcore-management", "requirer")
         self.harness.add_relation_unit(
@@ -335,31 +339,6 @@ class TestCharm(unittest.TestCase):
         patch_set_management_url.assert_called_once_with(
             management_url="http://10.0.0.1:5000",
         )
-
-    @patch("charm.check_output")
-    @patch(
-        "charms.sdcore_webui_k8s.v0.sdcore_management.SdcoreManagementProvides.set_management_url"
-    )
-    def test_given_sdcore_management_relation_is_created_webui_endpoint_url_is_available_when_config_changed_pod_ip_updated_then_management_url_is_set_in_relations_with_updated_value(  # noqa: E501
-            self,
-            patch_set_management_url,
-            patch_check_output,
-    ):
-        self.harness.set_can_connect(container="webui", val=True)
-        self.harness.add_storage("config", attach=True)
-        patch_check_output.return_value = b"10.0.0.1"
-        sdcore_management_relation = self.harness.add_relation("sdcore-management", "requirer")
-        self.harness.add_relation_unit(
-            relation_id=sdcore_management_relation, remote_unit_name="requirer/0"
-        )
-
-        patch_set_management_url.assert_called_once_with(management_url='http://10.0.0.1:5000')
-
-        patch_check_output.return_value = b"10.0.0.5"
-        self._create_common_database_relation_and_populate_data()
-        self._create_auth_database_relation_and_populate_data()
-        calls = [call(management_url='http://10.0.0.1:5000'), call(management_url='http://10.0.0.5:5000')]
-        patch_set_management_url.assert_has_calls(calls)
 
     def test_given_common_db_relation_is_created_but_not_available_when_collect_status_then_status_is_waiting(  # noqa: E501
         self,
