@@ -22,7 +22,6 @@ class DummySdcoreConfigRequirerCharm(CharmBase):
     """Charm the service."""
 
     def __init__(self, *args):
-        """Init."""
         super().__init__(*args)
         self.webui_requirer = SdcoreConfigRequires(self, "sdcore_config")
         self.framework.observe(
