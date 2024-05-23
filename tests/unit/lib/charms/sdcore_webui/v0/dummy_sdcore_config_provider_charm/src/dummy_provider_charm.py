@@ -16,7 +16,6 @@ class DummySdcoreConfigProviderCharm(CharmBase):
     WEBUI_URL = "sdcore-webui-k8s:9876"
 
     def __init__(self, *args):
-        """Init."""
         super().__init__(*args)
         self.webui_url_provider = SdcoreConfigProvides(self, "sdcore_config")
         self.framework.observe(
