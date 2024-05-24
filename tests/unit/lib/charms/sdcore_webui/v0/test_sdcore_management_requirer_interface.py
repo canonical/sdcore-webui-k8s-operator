@@ -70,25 +70,24 @@ class TestSdcoreManagementRequirer:
         self.harness.cleanup()
         request.addfinalizer(self.tearDown)
 
-    def create_sdcore_management_relation(self):
+    def create_sdcore_management_relation_with_data(self, data: dict) -> int:
         relation_id = self.harness.add_relation(
             relation_name=RELATION_NAME, remote_app=REMOTE_APP_NAME
         )
         self.harness.add_relation_unit(
             relation_id=relation_id, remote_unit_name=f"{REMOTE_APP_NAME}/0"
         )
+        self.harness.update_relation_data(
+            relation_id=relation_id, app_or_unit=REMOTE_APP_NAME, key_values=data
+        )
         return relation_id
 
     def test_given_management_url_in_relation_data_when_relation_changed_then_management_url_available_event_emitted(  # noqa: E501
         self
     ):
-        relation_id = self.create_sdcore_management_relation()
-        relation_data = {
-            "management_url": MANAGEMENT_URL,
-        }
-        self.harness.update_relation_data(
-            relation_id=relation_id, app_or_unit=REMOTE_APP_NAME, key_values=relation_data
-        )
+        relation_data = {"management_url": MANAGEMENT_URL}
+        self.create_sdcore_management_relation_with_data(relation_data)
+
         calls = [
             call.emit(
                 management_url=MANAGEMENT_URL,
@@ -99,37 +98,24 @@ class TestSdcoreManagementRequirer:
     def test_given_management_url_not_in_relation_data_when_relation_changed_then_management_url_available_event_not_emitted(  # noqa: E501
         self,
     ):
-        relation_id = self.create_sdcore_management_relation()
         relation_data = {}
-        self.harness.update_relation_data(
-            relation_id=relation_id, app_or_unit=REMOTE_APP_NAME, key_values=relation_data
-        )
+        self.create_sdcore_management_relation_with_data(relation_data)
 
         self.mock_management_url_available.assert_not_called()
 
     def test_given_management_url_not_valid_in_relation_data_when_relation_changed_then_management_url_available_event_not_emitted(  # noqa: E501
         self
     ):
-        relation_id = self.create_sdcore_management_relation()
-        relation_data = {
-            "management_url": "invalid url",
-        }
-        self.harness.update_relation_data(
-            relation_id=relation_id, app_or_unit=REMOTE_APP_NAME, key_values=relation_data
-        )
+        relation_data = {"management_url": "invalid url"}
+        self.create_sdcore_management_relation_with_data(relation_data)
 
         self.mock_management_url_available.assert_not_called()
 
     def test_given_management_url_in_relation_data_when_get_management_url_then_address_is_returned(  # noqa: E501
         self,
     ):
-        relation_id = self.create_sdcore_management_relation()
-        relation_data = {
-            "management_url": MANAGEMENT_URL,
-        }
-        self.harness.update_relation_data(
-            relation_id=relation_id, app_or_unit=REMOTE_APP_NAME, key_values=relation_data
-        )
+        relation_data = {"management_url": MANAGEMENT_URL}
+        self.create_sdcore_management_relation_with_data(relation_data)
 
         management_url = self.harness.charm.sdcore_management_requirer.management_url
         assert management_url == MANAGEMENT_URL
@@ -137,18 +123,11 @@ class TestSdcoreManagementRequirer:
     def test_given_management_url_changed_in_relation_data_when_get_management_url_then_new_address_is_returned(  # noqa: E501
         self,
     ):
-        relation_id = self.create_sdcore_management_relation()
-        relation_data = {
-            "management_url": MANAGEMENT_URL,
-        }
+        relation_data = {"management_url": MANAGEMENT_URL}
+        relation_id = self.create_sdcore_management_relation_with_data(relation_data)
+        new_relation_data = {"management_url": "http://different.endpoint:1234"}
         self.harness.update_relation_data(
-            relation_id=relation_id, app_or_unit=REMOTE_APP_NAME, key_values=relation_data
-        )
-        relation_data = {
-            "management_url": "http://different.endpoint:1234",
-        }
-        self.harness.update_relation_data(
-            relation_id=relation_id, app_or_unit=REMOTE_APP_NAME, key_values=relation_data
+            relation_id=relation_id, app_or_unit=REMOTE_APP_NAME, key_values=new_relation_data
         )
 
         management_url = self.harness.charm.sdcore_management_requirer.management_url
