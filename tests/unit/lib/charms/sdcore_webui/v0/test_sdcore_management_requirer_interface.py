@@ -27,7 +27,6 @@ requires:
 logger = logging.getLogger(__name__)
 
 CHARM_LIB_PATH = "lib.charms.sdcore_webui_k8s.v0.sdcore_management"
-NAMESPACE = "some_namespace"
 MANAGEMENT_URL = "http://1.2.3.4:1234"
 RELATION_NAME = "sdcore-management"
 REMOTE_APP_NAME = "dummy-sdcore-management-provider"
@@ -37,7 +36,7 @@ class DummySdcoreManagementRequires(CharmBase):
 
     def __init__(self, *args):
         super().__init__(*args)
-        self.sdcore_management_requirer = SdcoreManagementRequires(self, "sdcore-management")
+        self.sdcore_management_requirer = SdcoreManagementRequires(self, RELATION_NAME)
         self.framework.observe(
             self.sdcore_management_requirer.on.management_url_available,
             self._on_management_url_available,
@@ -64,7 +63,7 @@ class TestSdcoreManagementRequirer:
     @pytest.fixture(autouse=True)
     def harness(self, setUp, request):
         self.harness = testing.Harness(DummySdcoreManagementRequires, meta=METADATA)
-        self.harness.set_model_name(name=NAMESPACE)
+        self.harness.set_model_name(name="some_namespace")
         self.harness.set_leader(is_leader=True)
         self.harness.begin()
         yield self.harness
@@ -78,7 +77,6 @@ class TestSdcoreManagementRequirer:
         self.harness.add_relation_unit(
             relation_id=relation_id, remote_unit_name=f"{REMOTE_APP_NAME}/0"
         )
-
         return relation_id
 
     def test_given_management_url_in_relation_data_when_relation_changed_then_management_url_available_event_emitted(  # noqa: E501

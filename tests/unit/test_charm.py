@@ -9,10 +9,10 @@ from ops import testing
 from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 
 AUTH_DATABASE_RELATION_NAME = "auth_database"
+CONTAINER = "webui"
 CONTAINER_CONFIG_FILE_PATH = "etc/webui/webuicfg.conf"
 COMMON_DATABASE_RELATION_NAME = "common_database"
 EXPECTED_CONFIG_FILE_PATH = "tests/unit/expected_webui_cfg.json"
-NAMESPACE = "whatever"
 
 
 def read_file_content(path: str) -> str:
@@ -33,13 +33,14 @@ class TestCharm:
         self.mock_check_output = TestCharm.patcher_check_output.start()
         self.mock_set_management_url = TestCharm.patcher_set_management_url.start()
 
-    def tearDown(self) -> None:
+    @staticmethod
+    def tearDown() -> None:
         patch.stopall()
 
     @pytest.fixture(autouse=True)
     def harness(self, setUp, request):
         self.harness = testing.Harness(WebuiOperatorCharm)
-        self.harness.set_model_name(name=NAMESPACE)
+        self.harness.set_model_name(name="whatever")
         self.harness.set_leader(is_leader=True)
         self.harness.begin()
         yield self.harness
@@ -47,83 +48,64 @@ class TestCharm:
         request.addfinalizer(self.tearDown)
 
     def _create_common_database_relation_and_populate_data(self) -> int:
-        common_database_url = "1.9.11.4:1234"
-        common_database_username = "banana"
-        common_database_password = "pizza"
-        common_database_relation_id = self.harness.add_relation(
-            COMMON_DATABASE_RELATION_NAME, "mongodb"
-        )
-        self.harness.add_relation_unit(
-            relation_id=common_database_relation_id, remote_unit_name="mongodb/0"
-        )
-        self.harness.update_relation_data(
-            relation_id=common_database_relation_id,
+        relation_id = self.harness.add_relation(COMMON_DATABASE_RELATION_NAME, "mongodb")  # type:ignore
+        self.harness.add_relation_unit(relation_id=relation_id, remote_unit_name="mongodb/0")  # type:ignore
+        self.harness.update_relation_data(  # type:ignore
+            relation_id=relation_id,
             app_or_unit="mongodb",
             key_values={
-                "username": common_database_username,
-                "password": common_database_password,
-                "uris": common_database_url,
+                "username": "banana",
+                "password": "pizza",
+                "uris": "1.9.11.4:1234",
             },
         )
-        return common_database_relation_id
+        return relation_id
 
     def _create_auth_database_relation_and_populate_data(self) -> int:
-        auth_database_url = "1.8.11.4:1234"
-        auth_database_username = "apple"
-        auth_database_password = "hamburger"
-        auth_database_relation_id = self.harness.add_relation(
-            AUTH_DATABASE_RELATION_NAME, "mongodb"
-        )
-        self.harness.add_relation_unit(
-            relation_id=auth_database_relation_id, remote_unit_name="mongodb/0"
-        )
-        self.harness.update_relation_data(
-            relation_id=auth_database_relation_id,
+        relation_id = self.harness.add_relation(AUTH_DATABASE_RELATION_NAME, "mongodb")  # type:ignore
+        self.harness.add_relation_unit(relation_id=relation_id, remote_unit_name="mongodb/0")  # type:ignore
+        self.harness.update_relation_data(  # type:ignore
+            relation_id=relation_id,
             app_or_unit="mongodb",
             key_values={
-                "username": auth_database_username,
-                "password": auth_database_password,
-                "uris": auth_database_url,
+                "username": "apple",
+                "password": "hamburger",
+                "uris": "1.8.11.4:1234",
             },
         )
-        return auth_database_relation_id
+        return relation_id
 
-    def _create_sdcore_management_relation(self) -> int:
-        relation_id = self.harness.add_relation("sdcore-management", "requirer")
-        self.harness.add_relation_unit(
-            relation_id=relation_id, remote_unit_name="requirer/0"
-        )
+    def _create_sdcore_management_relation(self) -> None:
+        relation_id = self.harness.add_relation("sdcore-management", "requirer")  # type:ignore
+        self.harness.add_relation_unit(relation_id=relation_id, remote_unit_name="requirer/0")  # type:ignore
 
     def test_given_common_database_relation_not_created_when_pebble_ready_then_status_is_blocked(
         self,
     ):
         self.harness.add_storage("config", attach=True)
+        self._create_auth_database_relation_and_populate_data()
 
-        self.harness.container_pebble_ready("webui")
+        self.harness.container_pebble_ready(CONTAINER)
         self.harness.evaluate_status()
 
-        assert self.harness.model.unit.status == BlockedStatus(
-            "Waiting for common_database relation to be created"
-        )
+        assert self.harness.model.unit.status == BlockedStatus("Waiting for common_database relation to be created")  # noqa: E501
 
     def test_given_auth_database_relation_not_created_when_pebble_ready_then_status_is_blocked(
         self,
     ):
         self._create_common_database_relation_and_populate_data()
 
-        self.harness.container_pebble_ready("webui")
+        self.harness.container_pebble_ready(CONTAINER)
         self.harness.evaluate_status()
 
-        assert self.harness.model.unit.status == BlockedStatus(
-            "Waiting for auth_database relation to be created"
-        )
+        assert self.harness.model.unit.status == BlockedStatus("Waiting for auth_database relation to be created")  # noqa: E501
 
     def test_given_config_file_not_written_when_databases_are_created_then_config_file_is_written(
         self,
     ):
-        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.set_can_connect(container=CONTAINER, val=True)
         self.harness.add_storage("config", attach=True)
-        root = self.harness.get_filesystem_root("webui")
+        root = self.harness.get_filesystem_root(CONTAINER)
 
         self._create_common_database_relation_and_populate_data()
         self._create_auth_database_relation_and_populate_data()
@@ -134,9 +116,9 @@ class TestCharm:
     def test_given_config_file_content_doesnt_match_when_database_changed_then_content_is_updated(
         self,
     ):
-        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.set_can_connect(container=CONTAINER, val=True)
         self.harness.add_storage("config", attach=True)
-        root = self.harness.get_filesystem_root("webui")
+        root = self.harness.get_filesystem_root(CONTAINER)
         (root / CONTAINER_CONFIG_FILE_PATH).write_text("Obviously different content")
 
         self._create_common_database_relation_and_populate_data()
@@ -148,13 +130,12 @@ class TestCharm:
     def test_given_storage_attached_and_config_file_exists_when_pebble_ready_then_config_file_is_written(  # noqa: E501
         self,
     ):
-        self.harness.set_can_connect(container="webui", val=True)
         self.harness.add_storage("config", attach=True)
-        root = self.harness.get_filesystem_root("webui")
+        root = self.harness.get_filesystem_root(CONTAINER)
         self._create_common_database_relation_and_populate_data()
         self._create_auth_database_relation_and_populate_data()
 
-        self.harness.container_pebble_ready(container_name="webui")
+        self.harness.container_pebble_ready(container_name=CONTAINER)
 
         expected_config_file_content = read_file_content(EXPECTED_CONFIG_FILE_PATH)
         assert (root / CONTAINER_CONFIG_FILE_PATH).read_text() == expected_config_file_content
@@ -162,16 +143,15 @@ class TestCharm:
     def test_given_container_is_ready_db_relation_exists_and_storage_attached_when_pebble_ready_then_pebble_plan_is_applied(  # noqa: E501
         self,
     ):
-        self.harness.set_can_connect(container="webui", val=True)
         self.harness.add_storage("config", attach=True)
         self._create_common_database_relation_and_populate_data()
         self._create_auth_database_relation_and_populate_data()
 
-        self.harness.container_pebble_ready(container_name="webui")
+        self.harness.container_pebble_ready(container_name=CONTAINER)
 
         expected_plan = {
             "services": {
-                "webui": {
+                CONTAINER: {
                     "override": "replace",
                     "command": "/bin/webconsole --webuicfg /etc/webui/webuicfg.conf",
                     "startup": "enabled",
@@ -185,13 +165,13 @@ class TestCharm:
                 }
             },
         }
-        updated_plan = self.harness.get_container_pebble_plan("webui").to_dict()
+        updated_plan = self.harness.get_container_pebble_plan(CONTAINER).to_dict()
         assert expected_plan == updated_plan
 
     def test_given_container_is_ready_and_storage_attached_when_db_relation_added_then_pebble_plan_is_applied(  # noqa: E501
         self,
     ):
-        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.set_can_connect(container=CONTAINER, val=True)
         self.harness.add_storage("config", attach=True)
 
         self._create_common_database_relation_and_populate_data()
@@ -199,7 +179,7 @@ class TestCharm:
 
         expected_plan = {
             "services": {
-                "webui": {
+                CONTAINER: {
                     "override": "replace",
                     "command": "/bin/webconsole --webuicfg /etc/webui/webuicfg.conf",
                     "startup": "enabled",
@@ -213,18 +193,17 @@ class TestCharm:
                 }
             },
         }
-        updated_plan = self.harness.get_container_pebble_plan("webui").to_dict()
+        updated_plan = self.harness.get_container_pebble_plan(CONTAINER).to_dict()
         assert expected_plan == updated_plan
 
     def test_given_container_is_ready_db_relation_exists_and_storage_attached_when_pebble_ready_then_status_is_active(  # noqa: E501
         self,
     ):
-        self.harness.set_can_connect(container="webui", val=True)
         self.harness.add_storage("config", attach=True)
         self._create_common_database_relation_and_populate_data()
         self._create_auth_database_relation_and_populate_data()
 
-        self.harness.container_pebble_ready("webui")
+        self.harness.container_pebble_ready(CONTAINER)
         self.harness.evaluate_status()
 
         assert self.harness.model.unit.status == ActiveStatus()
@@ -232,7 +211,7 @@ class TestCharm:
     def test_given_container_is_ready_and_storage_attached_when_database_created_then_status_is_active(  # noqa: E501
         self,
     ):
-        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.set_can_connect(container=CONTAINER, val=True)
         self.harness.add_storage("config", attach=True)
 
         self._create_common_database_relation_and_populate_data()
@@ -244,7 +223,7 @@ class TestCharm:
     def test_given_container_is_ready_and_storage_attached_when_db_enpoints_changed_then_status_is_active(  # noqa: E501
         self,
     ):
-        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.set_can_connect(container=CONTAINER, val=True)
         self.harness.add_storage("config", attach=True)
         self._create_auth_database_relation_and_populate_data()
         relation_id = self._create_common_database_relation_and_populate_data()
@@ -261,7 +240,7 @@ class TestCharm:
     def test_given_charm_active_status_when_database_relation_breaks_then_status_is_blocked(
         self,
     ):
-        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.set_can_connect(container=CONTAINER, val=True)
         self.harness.add_storage("config", attach=True)
         database_relation_id = self._create_common_database_relation_and_populate_data()
         self._create_auth_database_relation_and_populate_data()
@@ -274,7 +253,7 @@ class TestCharm:
         )
 
     def test_given_storage_not_attached_when_on_databases_are_created_then_status_is_waiting(self):
-        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.set_can_connect(container=CONTAINER, val=True)
         self._create_common_database_relation_and_populate_data()
         self._create_auth_database_relation_and_populate_data()
 
@@ -287,7 +266,7 @@ class TestCharm:
     def test_given_storage_attached_but_cannot_connect_to_container_when_db_created_then_status_is_waiting(  # noqa: E501
         self,
     ):
-        self.harness.set_can_connect(container="webui", val=False)
+        self.harness.set_can_connect(container=CONTAINER, val=False)
         self.harness.add_storage("config", attach=True)
         self._create_common_database_relation_and_populate_data()
         self._create_auth_database_relation_and_populate_data()
@@ -299,7 +278,7 @@ class TestCharm:
     def test_given_storage_not_attached_when_on_database_endpoints_changed_then_status_is_waiting(
         self,
     ):
-        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.set_can_connect(container=CONTAINER, val=True)
         self._create_auth_database_relation_and_populate_data()
         relation_id = self._create_common_database_relation_and_populate_data()
 
@@ -338,62 +317,52 @@ class TestCharm:
     def test_given_common_db_relation_is_created_but_not_available_when_collect_status_then_status_is_waiting(  # noqa: E501
         self,
     ):
-        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.set_can_connect(container=CONTAINER, val=True)
         self.harness.add_storage("config", attach=True)
         self.harness.add_relation(COMMON_DATABASE_RELATION_NAME, "mongodb")
         self._create_auth_database_relation_and_populate_data()
 
         self.harness.evaluate_status()
 
-        assert self.harness.model.unit.status == WaitingStatus(
-            "Waiting for the common database to be available"
-        )
+        assert self.harness.model.unit.status == WaitingStatus("Waiting for the common database to be available")  # noqa: E501
 
     def test_given_auth_db_relation_is_created_but_not_available_when_collect_status_then_status_is_waiting(  # noqa: E501
         self,
     ):
-        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.set_can_connect(container=CONTAINER, val=True)
         self.harness.add_storage("config", attach=True)
         self.harness.add_relation(AUTH_DATABASE_RELATION_NAME, "mongodb")
         self._create_common_database_relation_and_populate_data()
 
         self.harness.evaluate_status()
 
-        assert self.harness.model.unit.status == WaitingStatus(
-            "Waiting for the auth database to be available"
-        )
+        assert self.harness.model.unit.status == WaitingStatus("Waiting for the auth database to be available")  # noqa: E501
 
     def test_given_config_file_does_not_exist_when_collect_status_then_status_is_waiting(self):
         self._create_common_database_relation_and_populate_data()
         self._create_auth_database_relation_and_populate_data()
-        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.set_can_connect(container=CONTAINER, val=True)
         self.harness.add_storage("config", attach=True)
 
         self.harness.evaluate_status()
 
-        assert self.harness.model.unit.status == WaitingStatus(
-            "Waiting for config file to be stored"
-        )
+        assert self.harness.model.unit.status == WaitingStatus("Waiting for config file to be stored")  # noqa: E501
 
     def test_given_service_is_not_running_when_collect_status_then_status_is_waiting(self):
         self._create_common_database_relation_and_populate_data()
         self._create_auth_database_relation_and_populate_data()
-        self.harness.set_can_connect(container="webui", val=True)
+        self.harness.set_can_connect(container=CONTAINER, val=True)
         self.harness.add_storage("config", attach=True)
-        root = self.harness.get_filesystem_root("webui")
+        root = self.harness.get_filesystem_root(CONTAINER)
         (root / CONTAINER_CONFIG_FILE_PATH).write_text("something")
 
         self.harness.evaluate_status()
 
-        assert self.harness.model.unit.status == WaitingStatus(
-            "Waiting for webui service to start"
-        )
+        assert self.harness.model.unit.status == WaitingStatus("Waiting for webui service to start")  # noqa: E501
 
     def test_given_unit_is_not_leader_when_collect_status_then_status_is_blocked(self):
         self.harness.set_leader(is_leader=False)
 
         self.harness.evaluate_status()
 
-        assert self.harness.model.unit.status == BlockedStatus(
-            "Scaling is not implemented for this charm"
-        )
+        assert self.harness.model.unit.status == BlockedStatus("Scaling is not implemented for this charm")  # noqa: E501
