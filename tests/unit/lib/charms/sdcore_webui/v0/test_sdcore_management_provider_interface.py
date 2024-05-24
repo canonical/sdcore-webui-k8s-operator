@@ -23,7 +23,6 @@ requires:
 
 logger = logging.getLogger(__name__)
 
-NAMESPACE = "some_namespace"
 RELATION_NAME = "sdcore-management"
 REMOTE_APP_NAME = "dummy-sdcore-management-requirer"
 
@@ -35,7 +34,7 @@ class DummySdcoreManagementProvides(CharmBase):
 
     def __init__(self, *args):
         super().__init__(*args)
-        self.sdcore_management_provider = SdcoreManagementProvides(self, "sdcore-management")
+        self.sdcore_management_provider = SdcoreManagementProvides(self, RELATION_NAME)
         self.framework.observe(
             self.on.sdcore_management_relation_joined, self._on_sdcore_management_relation_joined
         )
@@ -49,31 +48,22 @@ class DummySdcoreManagementProvides(CharmBase):
 
 class TestSdcoreManagementProvider:
 
-    @pytest.fixture()
-    def setUp(self):
-        pass
-
-    def tearDown(self) -> None:
-        patch.stopall()
-
     @pytest.fixture(autouse=True)
-    def harness(self, setUp, request):
+    def harness(self):
         self.harness = testing.Harness(DummySdcoreManagementProvides, meta=METADATA)
-        self.harness.set_model_name(name=NAMESPACE)
+        self.harness.set_model_name(name="some_namespace")
         self.harness.set_leader(is_leader=True)
         self.harness.begin()
         yield self.harness
         self.harness.cleanup()
-        request.addfinalizer(self.tearDown)
 
-    def _create_relation(self, remote_app_name: str):
+    def _create_relation(self):
         relation_id = self.harness.add_relation(
-            relation_name=RELATION_NAME, remote_app=remote_app_name
+            relation_name=RELATION_NAME, remote_app=REMOTE_APP_NAME
         )
         self.harness.add_relation_unit(
-            relation_id=relation_id, remote_unit_name=f"{remote_app_name}/0"
+            relation_id=relation_id, remote_unit_name=f"{REMOTE_APP_NAME}/0"
         )
-
         return relation_id
 
     def test_given_unit_is_leader_and_data_is_valid_when_sdcore_management_relation_joined_then_data_is_in_application_databag(  # noqa: E501
@@ -81,7 +71,7 @@ class TestSdcoreManagementProvider:
     ):
         self.harness.set_leader(is_leader=True)
 
-        relation_id = self._create_relation(remote_app_name=REMOTE_APP_NAME)
+        relation_id = self._create_relation()
         relation_data = self.harness.get_relation_data(
             relation_id=relation_id, app_or_unit=self.harness.charm.app.name
         )
@@ -93,7 +83,7 @@ class TestSdcoreManagementProvider:
     ):
         self.harness.set_leader(is_leader=False)
 
-        relation_id = self._create_relation(remote_app_name=REMOTE_APP_NAME)
+        relation_id = self._create_relation()
         relation_data = self.harness.get_relation_data(
             relation_id=relation_id, app_or_unit=self.harness.charm.app.name
         )
@@ -109,4 +99,4 @@ class TestSdcoreManagementProvider:
         ) as patched_address:
             patched_address.return_value = "invalid address"
             with pytest.raises(ValueError):
-                self._create_relation(remote_app_name=REMOTE_APP_NAME)
+                self._create_relation()
