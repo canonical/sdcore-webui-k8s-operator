@@ -118,13 +118,14 @@ class WebuiOperatorCharm(CharmBase):
         self.framework.observe(self.on.config_changed, self._configure_webui)
 
     def _configure_webui(self, _: EventBase) -> None:
-        """Configure Webui configuration file and publishes the Webui management URL.
+        """Handle Juju events.
 
-        The main callback method for `config changed`, `pebble ready`, `relation changed` e.g.
-         and custom events. Manages the Pebble services.
+        Whenever a Juju event is emitted, this method performs a couple of checks to make sure that
+        the workload is ready to be started. Then, it configures the Webui workload,
+        runs the Pebble services and expose the service information through charm's interface.
 
         Args:
-            _: Juju event
+            _ (EventBase): Juju event
         """
         for relation in [COMMON_DATABASE_RELATION_NAME, AUTH_DATABASE_RELATION_NAME]:
             if not self._relation_created(relation):
@@ -203,6 +204,15 @@ class WebuiOperatorCharm(CharmBase):
         )
 
     def _configure_workload(self, restart: bool = False) -> None:
+        """Configure and restart the workload if required.
+
+        This method detects the changes between the Pebble layer and the Pebble services.
+        If a change is detected, it applies the desired configuration.
+        Then, it restarts the workload if a restart is required.
+
+        Args:
+            restart (bool): Whether to restart the Webui container.
+        """
         plan = self._container.get_plan()
         if plan.services != self._pebble_layer.services:
             self._container.add_layer(
