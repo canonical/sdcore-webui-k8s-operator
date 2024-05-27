@@ -122,7 +122,6 @@ class TestSdcoreConfigRequirer:
             assert webui_url is None
             assert "1 validation error for ProviderSchema" in caplog.text
 
-
     def test_given_webui_information_in_relation_data_is_not_valid_when_get_webui_url_then_returns_none(  # noqa: E501
         self,
     ):
