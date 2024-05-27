@@ -24,7 +24,7 @@ codespell==2.3.0
     # via -r test-requirements.in
 cosl==0.0.11
     # via -r test-requirements.in
-coverage[toml]==7.5.1
+coverage[toml]==7.5.2
     # via -r test-requirements.in
 cryptography==42.0.5
     # via paramiko
