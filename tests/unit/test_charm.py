@@ -1,18 +1,19 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 import pytest
 from charm import WebuiOperatorCharm
 from ops import testing
-from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
+from ops.model import ActiveStatus, BlockedStatus, ModelError, WaitingStatus
 
 AUTH_DATABASE_RELATION_NAME = "auth_database"
 CONTAINER = "webui"
 CONTAINER_CONFIG_FILE_PATH = "etc/webui/webuicfg.conf"
 COMMON_DATABASE_RELATION_NAME = "common_database"
 EXPECTED_CONFIG_FILE_PATH = "tests/unit/expected_webui_cfg.json"
+SDCORE_CONFIG_RELATION_NAME = "sdcore-config"
 
 
 def read_file_content(path: str) -> str:
@@ -27,11 +28,21 @@ class TestCharm:
     patcher_set_management_url = patch(
         "charms.sdcore_webui_k8s.v0.sdcore_management.SdcoreManagementProvides.set_management_url"
     )
+    patcher_get_service = patch("ops.model.Container.get_service")
+    patcher_set_webui_url = patch(
+        "charms.sdcore_webui_k8s.v0.sdcore_config.SdcoreConfigProvides.set_webui_url"
+    )
+    patcher_set_webui_url_in_all_relations = patch(
+        "charms.sdcore_webui_k8s.v0.sdcore_config.SdcoreConfigProvides.set_webui_url_in_all_relations"
+    )
 
     @pytest.fixture()
     def setUp(self):
         self.mock_check_output = TestCharm.patcher_check_output.start()
         self.mock_set_management_url = TestCharm.patcher_set_management_url.start()
+        self.mock_get_service = TestCharm.patcher_get_service.start()
+        self.mock_set_webui_url = TestCharm.patcher_set_webui_url.start()
+        self.mock_set_webui_url_in_all_relations = TestCharm.patcher_set_webui_url_in_all_relations.start()  # noqa: E501
 
     @staticmethod
     def tearDown() -> None:
@@ -79,6 +90,10 @@ class TestCharm:
         relation_id = self.harness.add_relation("sdcore-management", "requirer")  # type:ignore
         self.harness.add_relation_unit(relation_id=relation_id, remote_unit_name="requirer/0")  # type:ignore
 
+    def _create_sdcore_config_relation(self, requirer) -> None:
+        relation_id = self.harness.add_relation(SDCORE_CONFIG_RELATION_NAME, requirer)  # type:ignore
+        self.harness.add_relation_unit(relation_id=relation_id, remote_unit_name=f"{requirer}/0")  # type:ignore
+
     def test_given_common_database_relation_not_created_when_pebble_ready_then_status_is_blocked(
         self,
     ):
@@ -87,7 +102,6 @@ class TestCharm:
 
         self.harness.container_pebble_ready(CONTAINER)
         self.harness.evaluate_status()
-
         assert self.harness.model.unit.status == BlockedStatus("Waiting for common_database relation to be created")  # noqa: E501
 
     def test_given_auth_database_relation_not_created_when_pebble_ready_then_status_is_blocked(
@@ -318,6 +332,43 @@ class TestCharm:
             management_url=f"http://{pod_ip}:5000",
         )
 
+    def test_given_webui_service_is_running_db_relations_are_joined_and_sdcore_config_relation_is_joined_when_config_changed_then_config_url_is_published_for_all_relations(  # noqa: E501
+        self,
+    ):
+        self.harness.set_can_connect(container=CONTAINER, val=True)
+        self.harness.add_storage("config", attach=True)
+        self.mock_get_service.side_effect = None
+        self._create_common_database_relation_and_populate_data()
+        self._create_auth_database_relation_and_populate_data()
+        self._create_sdcore_config_relation("requirer")
+        self.harness.charm._configure_webui(Mock())
+        self.mock_set_webui_url_in_all_relations.assert_called_once_with(webui_url="webui:9876")
+
+    def test_given_webui_service_is_running_when_several_sdcore_config_relations_are_joined_then_config_url_is_set_in_all_relations(  # noqa: E501
+        self
+    ):
+        self.harness.set_can_connect(container=CONTAINER, val=True)
+        self.harness.add_storage("config", attach=True)
+        self.mock_get_service.side_effect = None
+        relation_id_1 = self.harness.add_relation(SDCORE_CONFIG_RELATION_NAME, "requirer1")
+        self.harness.add_relation_unit(relation_id=relation_id_1, remote_unit_name="requirer1")
+        relation_id_2 = self.harness.add_relation(SDCORE_CONFIG_RELATION_NAME, "requirer2")
+        self.harness.add_relation_unit(relation_id=relation_id_2, remote_unit_name="requirer2")
+        calls = [
+            call.emit(webui_url="webui:9876", relation_id=relation_id_1),
+            call.emit(webui_url="webui:9876", relation_id=relation_id_2),
+        ]
+        self.mock_set_webui_url.assert_has_calls(calls)
+
+    def test_given_webui_service_is_not_running_when_sdcore_config_relation_joined_then_config_url_is_not_set_in_the_relations(  # noqa: E501
+        self,
+    ):
+        self.harness.set_can_connect(container=CONTAINER, val=True)
+        self.harness.add_storage("config", attach=True)
+        self.mock_get_service.side_effect = ModelError()
+        self._create_sdcore_config_relation(requirer="requirer1")
+        self.mock_set_webui_url.assert_not_called()
+
     def test_given_common_db_relation_is_created_but_not_available_when_collect_status_then_status_is_waiting(  # noqa: E501
         self,
     ):
@@ -357,6 +408,7 @@ class TestCharm:
         self._create_auth_database_relation_and_populate_data()
         self.harness.set_can_connect(container=CONTAINER, val=True)
         self.harness.add_storage("config", attach=True)
+        self.mock_get_service.side_effect = ModelError()
         root = self.harness.get_filesystem_root(CONTAINER)
         (root / CONTAINER_CONFIG_FILE_PATH).write_text("something")
 

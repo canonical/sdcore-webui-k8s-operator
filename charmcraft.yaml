@@ -40,6 +40,8 @@ requires:
 provides:
   sdcore-management:
     interface: sdcore_management
+  sdcore-config:
+    interface: sdcore_config
 
 assumes:
   - k8s-api

@@ -11,12 +11,15 @@ from typing import Optional
 
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires  # type: ignore[import]
 from charms.loki_k8s.v1.loki_push_api import LogForwarder  # type: ignore[import]
+from charms.sdcore_webui_k8s.v0.sdcore_config import (  # type: ignore[import]
+    SdcoreConfigProvides,
+)
 from charms.sdcore_webui_k8s.v0.sdcore_management import (  # type: ignore[import]
     SdcoreManagementProvides,
 )
 from jinja2 import Environment, FileSystemLoader
 from ops import ActiveStatus, BlockedStatus, CollectStatusEvent, ModelError, WaitingStatus
-from ops.charm import CharmBase, EventBase
+from ops.charm import CharmBase, EventBase, RelationJoinedEvent
 from ops.main import main
 from ops.pebble import Layer
 
@@ -29,6 +32,7 @@ AUTH_DATABASE_RELATION_NAME = "auth_database"
 AUTH_DATABASE_NAME = "authentication"
 COMMON_DATABASE_NAME = "free5gc"
 SDCORE_MANAGEMENT_RELATION_NAME = "sdcore-management"
+SDCORE_CONFIG_RELATION_NAME = "sdcore-config"
 GRPC_PORT = 9876
 WEBUI_URL_PORT = 5000
 LOGGING_RELATION_NAME = "logging"
@@ -103,6 +107,7 @@ class WebuiOperatorCharm(CharmBase):
         )
         self._logging = LogForwarder(charm=self, relation_name=LOGGING_RELATION_NAME)
         self._sdcore_management = SdcoreManagementProvides(self, SDCORE_MANAGEMENT_RELATION_NAME)
+        self._sdcore_config = SdcoreConfigProvides(self, SDCORE_CONFIG_RELATION_NAME)
         self.unit.set_ports(GRPC_PORT, WEBUI_URL_PORT)
         self.framework.observe(self.on.webui_pebble_ready, self._configure_webui)
         self.framework.observe(self.on.common_database_relation_joined, self._configure_webui)
@@ -113,6 +118,9 @@ class WebuiOperatorCharm(CharmBase):
         self.framework.observe(self._auth_database.on.endpoints_changed, self._configure_webui)
         self.framework.observe(
             self.on.sdcore_management_relation_joined, self._configure_webui
+        )
+        self.framework.observe(
+            self.on.sdcore_config_relation_joined, self._on_sdcore_config_relation_joined
         )
         # Handling config changed event to publish the new url if the unit reboots and gets new IP
         self.framework.observe(self.on.config_changed, self._configure_webui)
@@ -146,7 +154,7 @@ class WebuiOperatorCharm(CharmBase):
 
         self._configure_workload(restart=config_update_required)
         self._publish_sdcore_management_url()
-
+        self._publish_sdcore_config_url()
 
     def _on_collect_unit_status(self, event: CollectStatusEvent):
         """Check the unit status and set to Unit when CollectStatusEvent is fired.
@@ -202,6 +210,29 @@ class WebuiOperatorCharm(CharmBase):
             auth_database_name=AUTH_DATABASE_NAME,
             auth_database_url=self._get_auth_database_url(),
         )
+
+    def _on_sdcore_config_relation_joined(self, event: RelationJoinedEvent) -> None:
+        """Handle sdcore_config relation joined event.
+
+        Set the Webui config URL in the relation databag when Webui becomes accessible.
+
+        Args:
+            event: RelationJoinedEvent
+        """
+        if not self._webui_service_is_running():
+            return
+
+        webui_config_url = self._get_webui_config_url()
+        self._sdcore_config.set_webui_url(
+            webui_url=webui_config_url,
+            relation_id=event.relation.id,
+        )
+
+    def _publish_sdcore_config_url(self) -> None:
+        if not self._relation_created(SDCORE_CONFIG_RELATION_NAME):
+            return
+        webui_config_url = self._get_webui_config_url()
+        self._sdcore_config.set_webui_url_in_all_relations(webui_url=webui_config_url)
 
     def _configure_workload(self, restart: bool = False) -> None:
         """Configure and restart the workload if required.
@@ -295,6 +326,9 @@ class WebuiOperatorCharm(CharmBase):
         if not _get_pod_ip():
             return None
         return f"http://{_get_pod_ip()}:{WEBUI_URL_PORT}"
+
+    def _get_webui_config_url(self) -> str:
+        return f"{self._service_name}:{GRPC_PORT}"
 
     @property
     def _pebble_layer(self) -> Layer:
