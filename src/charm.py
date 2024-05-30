@@ -19,7 +19,7 @@ from charms.sdcore_webui_k8s.v0.sdcore_management import (  # type: ignore[impor
 )
 from jinja2 import Environment, FileSystemLoader
 from ops import ActiveStatus, BlockedStatus, CollectStatusEvent, ModelError, WaitingStatus
-from ops.charm import CharmBase, EventBase, RelationJoinedEvent
+from ops.charm import CharmBase, EventBase
 from ops.main import main
 from ops.pebble import Layer
 
@@ -120,7 +120,7 @@ class WebuiOperatorCharm(CharmBase):
             self.on.sdcore_management_relation_joined, self._configure_webui
         )
         self.framework.observe(
-            self.on.sdcore_config_relation_joined, self._on_sdcore_config_relation_joined
+            self.on.sdcore_config_relation_joined,  self._configure_webui
         )
         # Handling config changed event to publish the new url if the unit reboots and gets new IP
         self.framework.observe(self.on.config_changed, self._configure_webui)
@@ -211,25 +211,10 @@ class WebuiOperatorCharm(CharmBase):
             auth_database_url=self._get_auth_database_url(),
         )
 
-    def _on_sdcore_config_relation_joined(self, event: RelationJoinedEvent) -> None:
-        """Handle sdcore_config relation joined event.
-
-        Set the Webui config URL in the relation databag when Webui becomes accessible.
-
-        Args:
-            event: RelationJoinedEvent
-        """
-        if not self._webui_service_is_running():
-            return
-
-        webui_config_url = self._get_webui_config_url()
-        self._sdcore_config.set_webui_url(
-            webui_url=webui_config_url,
-            relation_id=event.relation.id,
-        )
-
     def _publish_sdcore_config_url(self) -> None:
         if not self._relation_created(SDCORE_CONFIG_RELATION_NAME):
+            return
+        if not self._webui_service_is_running():
             return
         webui_config_url = self._get_webui_config_url()
         self._sdcore_config.set_webui_url_in_all_relations(webui_url=webui_config_url)
@@ -320,7 +305,7 @@ class WebuiOperatorCharm(CharmBase):
         return bool(self._container.exists(f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}"))
 
     def _relation_created(self, relation_name: str) -> bool:
-        return bool(self.model.get_relation(relation_name))
+        return bool(self.model.relations[relation_name])
 
     def _get_webui_endpoint_url(self) -> Optional[str]:
         if not _get_pod_ip():
