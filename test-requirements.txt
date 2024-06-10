@@ -22,7 +22,7 @@ charset-normalizer==3.3.2
     # via requests
 codespell==2.3.0
     # via -r test-requirements.in
-cosl==0.0.11
+cosl==0.0.12
     # via -r test-requirements.in
 coverage[toml]==7.5.3
     # via -r test-requirements.in
