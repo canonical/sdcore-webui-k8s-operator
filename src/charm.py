@@ -36,6 +36,7 @@ SDCORE_CONFIG_RELATION_NAME = "sdcore-config"
 GRPC_PORT = 9876
 WEBUI_URL_PORT = 5000
 LOGGING_RELATION_NAME = "logging"
+WORKLOAD_VERSION_FILE_NAME = "/etc/workload-version"
 
 
 def _get_pod_ip() -> Optional[str]:
@@ -116,12 +117,8 @@ class WebuiOperatorCharm(CharmBase):
         self.framework.observe(self._auth_database.on.database_created, self._configure_webui)
         self.framework.observe(self._common_database.on.endpoints_changed, self._configure_webui)
         self.framework.observe(self._auth_database.on.endpoints_changed, self._configure_webui)
-        self.framework.observe(
-            self.on.sdcore_management_relation_joined, self._configure_webui
-        )
-        self.framework.observe(
-            self.on.sdcore_config_relation_joined,  self._configure_webui
-        )
+        self.framework.observe(self.on.sdcore_management_relation_joined, self._configure_webui)
+        self.framework.observe(self.on.sdcore_config_relation_joined, self._configure_webui)
         # Handling config changed event to publish the new url if the unit reboots and gets new IP
         self.framework.observe(self.on.config_changed, self._configure_webui)
 
@@ -159,6 +156,8 @@ class WebuiOperatorCharm(CharmBase):
     def _on_collect_unit_status(self, event: CollectStatusEvent):
         """Check the unit status and set to Unit when CollectStatusEvent is fired.
 
+        Also sets the workload version if present in rock.
+
         Args:
             event: CollectStatusEvent
         """
@@ -188,6 +187,9 @@ class WebuiOperatorCharm(CharmBase):
             event.add_status(WaitingStatus("Waiting for container to be ready"))
             logger.info("Waiting for container to be ready")
             return
+
+        self.unit.set_workload_version(self._get_workload_version())
+
         if not self._container.exists(path=BASE_CONFIG_PATH):
             event.add_status(WaitingStatus("Waiting for storage to be attached"))
             logger.info("Waiting for storage to be attached")
@@ -231,9 +233,7 @@ class WebuiOperatorCharm(CharmBase):
         """
         plan = self._container.get_plan()
         if plan.services != self._pebble_layer.services:
-            self._container.add_layer(
-                self._container_name, self._pebble_layer, combine=True
-            )
+            self._container.add_layer(self._container_name, self._pebble_layer, combine=True)
             self._container.replan()
             logger.info("New layer added: %s", self._pebble_layer)
         if restart:
@@ -303,6 +303,24 @@ class WebuiOperatorCharm(CharmBase):
 
     def _config_file_exists(self) -> bool:
         return bool(self._container.exists(f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}"))
+
+    def _get_workload_version(self) -> str:
+        """Return the workload version.
+
+        Checks for the presence of /etc/workload-version file
+        and if present, returns the contents of that file. If
+        the file is not present, an empty string is returned.
+
+        Returns:
+            string: A human readable string representing the
+            version of the workload
+        """
+        if self._container.exists(path=f"{WORKLOAD_VERSION_FILE_NAME}"):
+            version_file_content = self._container.pull(
+                path=f"{WORKLOAD_VERSION_FILE_NAME}"
+            ).read()
+            return version_file_content
+        return ""
 
     def _relation_created(self, relation_name: str) -> bool:
         return bool(self.model.relations[relation_name])
