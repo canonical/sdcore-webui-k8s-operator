@@ -1,6 +1,7 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+import os
 from unittest.mock import call, patch
 
 import pytest
@@ -23,7 +24,6 @@ def read_file_content(path: str) -> str:
 
 
 class TestCharm:
-
     patcher_check_output = patch("charm.check_output")
     patcher_set_management_url = patch(
         "charms.sdcore_webui_k8s.v0.sdcore_management.SdcoreManagementProvides.set_management_url"
@@ -38,7 +38,9 @@ class TestCharm:
         self.mock_check_output = TestCharm.patcher_check_output.start()
         self.mock_set_management_url = TestCharm.patcher_set_management_url.start()
         self.mock_get_service = TestCharm.patcher_get_service.start()
-        self.mock_set_webui_url_in_all_relations = TestCharm.patcher_set_webui_url_in_all_relations.start()  # noqa: E501
+        self.mock_set_webui_url_in_all_relations = (
+            TestCharm.patcher_set_webui_url_in_all_relations.start()
+        )
 
     @staticmethod
     def tearDown() -> None:
@@ -98,7 +100,9 @@ class TestCharm:
 
         self.harness.container_pebble_ready(CONTAINER)
         self.harness.evaluate_status()
-        assert self.harness.model.unit.status == BlockedStatus("Waiting for common_database relation to be created")  # noqa: E501
+        assert self.harness.model.unit.status == BlockedStatus(
+            "Waiting for common_database relation to be created"
+        )
 
     def test_given_auth_database_relation_not_created_when_pebble_ready_then_status_is_blocked(
         self,
@@ -108,7 +112,9 @@ class TestCharm:
         self.harness.container_pebble_ready(CONTAINER)
         self.harness.evaluate_status()
 
-        assert self.harness.model.unit.status == BlockedStatus("Waiting for auth_database relation to be created")  # noqa: E501
+        assert self.harness.model.unit.status == BlockedStatus(
+            "Waiting for auth_database relation to be created"
+        )
 
     def test_given_config_file_not_written_when_databases_are_created_then_config_file_is_written(
         self,
@@ -304,7 +310,7 @@ class TestCharm:
         )
 
     def test_given_webui_endpoint_url_not_available_when_sdcore_management_relation_joined_then_management_url_not_set(  # noqa: E501
-        self
+        self,
     ):
         self.mock_check_output.return_value = ""
 
@@ -313,7 +319,7 @@ class TestCharm:
         self.mock_set_management_url.assert_not_called()
 
     def test_given_webui_endpoint_url_available_when_sdcore_management_relation_joined_then_management_url_is_passed_in_relation(  # noqa: E501
-        self
+        self,
     ):
         pod_ip = "10.0.0.1"
         self.harness.set_can_connect(container=CONTAINER, val=True)
@@ -348,7 +354,7 @@ class TestCharm:
         self.mock_set_webui_url_in_all_relations.assert_not_called()
 
     def test_given_webui_service_is_running_db_relations_are_not_joined_when_several_sdcore_config_relations_are_joined_then_config_url_is_set_in_all_relations(  # noqa: E501
-        self
+        self,
     ):
         self.harness.set_can_connect(container=CONTAINER, val=True)
         self.harness.add_storage("config", attach=True)
@@ -384,7 +390,9 @@ class TestCharm:
 
         self.harness.evaluate_status()
 
-        assert self.harness.model.unit.status == WaitingStatus("Waiting for the common database to be available")  # noqa: E501
+        assert self.harness.model.unit.status == WaitingStatus(
+            "Waiting for the common database to be available"
+        )
 
     def test_given_auth_db_relation_is_created_but_not_available_when_collect_status_then_status_is_waiting(  # noqa: E501
         self,
@@ -396,7 +404,9 @@ class TestCharm:
 
         self.harness.evaluate_status()
 
-        assert self.harness.model.unit.status == WaitingStatus("Waiting for the auth database to be available")  # noqa: E501
+        assert self.harness.model.unit.status == WaitingStatus(
+            "Waiting for the auth database to be available"
+        )
 
     def test_given_config_file_does_not_exist_when_collect_status_then_status_is_waiting(self):
         self._create_common_database_relation_and_populate_data()
@@ -406,7 +416,9 @@ class TestCharm:
 
         self.harness.evaluate_status()
 
-        assert self.harness.model.unit.status == WaitingStatus("Waiting for config file to be stored")  # noqa: E501
+        assert self.harness.model.unit.status == WaitingStatus(
+            "Waiting for config file to be stored"
+        )
 
     def test_given_service_is_not_running_when_collect_status_then_status_is_waiting(self):
         self._create_common_database_relation_and_populate_data()
@@ -419,11 +431,41 @@ class TestCharm:
 
         self.harness.evaluate_status()
 
-        assert self.harness.model.unit.status == WaitingStatus("Waiting for webui service to start")  # noqa: E501
+        assert self.harness.model.unit.status == WaitingStatus(
+            "Waiting for webui service to start"
+        )
 
     def test_given_unit_is_not_leader_when_collect_status_then_status_is_blocked(self):
         self.harness.set_leader(is_leader=False)
 
         self.harness.evaluate_status()
 
-        assert self.harness.model.unit.status == BlockedStatus("Scaling is not implemented for this charm")  # noqa: E501
+        assert self.harness.model.unit.status == BlockedStatus(
+            "Scaling is not implemented for this charm"
+        )
+
+    def test_given_no_workload_version_file_when_container_can_connect_then_workload_version_not_set(  # noqa: E501
+        self,
+    ):
+        self._create_common_database_relation_and_populate_data()
+        self._create_auth_database_relation_and_populate_data()
+        self.harness.set_can_connect(container=CONTAINER, val=True)
+        self.harness.container_pebble_ready(container_name=CONTAINER)
+        self.harness.evaluate_status()
+        version = self.harness.get_workload_version()
+        assert version == ""
+
+    def test_given_workload_version_file_when_container_can_connect_then_workload_version_set(
+        self,
+    ):
+        expected_version = "1.2.3"
+        root = self.harness.get_filesystem_root(CONTAINER)
+        os.mkdir(f"{root}/etc")
+        (root / "etc/workload-version").write_text(expected_version)
+        self._create_common_database_relation_and_populate_data()
+        self._create_auth_database_relation_and_populate_data()
+        self.harness.set_can_connect(container=CONTAINER, val=True)
+        self.harness.container_pebble_ready(container_name=CONTAINER)
+        self.harness.evaluate_status()
+        version = self.harness.get_workload_version()
+        assert version == expected_version
