@@ -4,18 +4,20 @@
 
 """Charmed operator for the 5G Webui service for K8s."""
 
+import json
 import logging
 from ipaddress import IPv4Address
 from subprocess import CalledProcessError, check_output
-from typing import Optional
+from typing import List, Optional, Tuple
 
 from charms.data_platform_libs.v0.data_interfaces import DatabaseRequires  # type: ignore[import]
 from charms.loki_k8s.v1.loki_push_api import LogForwarder  # type: ignore[import]
+from charms.sdcore_gnbsim_k8s.v0.fiveg_gnb_identity import (  # type: ignore[import]
+    GnbIdentityRequires,
+)
+from charms.sdcore_upf_k8s.v0.fiveg_n4 import N4Requires  # type: ignore[import]
 from charms.sdcore_webui_k8s.v0.sdcore_config import (  # type: ignore[import]
     SdcoreConfigProvides,
-)
-from charms.sdcore_webui_k8s.v0.sdcore_management import (  # type: ignore[import]
-    SdcoreManagementProvides,
 )
 from jinja2 import Environment, FileSystemLoader
 from ops import ActiveStatus, BlockedStatus, CollectStatusEvent, ModelError, WaitingStatus
@@ -27,16 +29,19 @@ logger = logging.getLogger(__name__)
 
 BASE_CONFIG_PATH = "/etc/webui"
 CONFIG_FILE_NAME = "webuicfg.conf"
+FIVEG_N4_RELATION_NAME = "fiveg_n4"
+GNB_IDENTITY_RELATION_NAME = "fiveg_gnb_identity"
 COMMON_DATABASE_RELATION_NAME = "common_database"
 AUTH_DATABASE_RELATION_NAME = "auth_database"
 AUTH_DATABASE_NAME = "authentication"
 COMMON_DATABASE_NAME = "free5gc"
-SDCORE_MANAGEMENT_RELATION_NAME = "sdcore-management"
 SDCORE_CONFIG_RELATION_NAME = "sdcore-config"
 GRPC_PORT = 9876
 WEBUI_URL_PORT = 5000
 LOGGING_RELATION_NAME = "logging"
 WORKLOAD_VERSION_FILE_NAME = "/etc/workload-version"
+GNB_CONFIG_PATH = f"{BASE_CONFIG_PATH}/gnb_config.json"
+UPF_CONFIG_PATH = f"{BASE_CONFIG_PATH}/upf_config.json"
 
 
 def _get_pod_ip() -> Optional[str]:
@@ -106,10 +111,12 @@ class WebuiOperatorCharm(CharmBase):
             database_name=AUTH_DATABASE_NAME,
             extra_user_roles="admin",
         )
+        self.fiveg_n4 = N4Requires(charm=self, relation_name=FIVEG_N4_RELATION_NAME)
+        self._gnb_identity = GnbIdentityRequires(self, GNB_IDENTITY_RELATION_NAME)
         self._logging = LogForwarder(charm=self, relation_name=LOGGING_RELATION_NAME)
-        self._sdcore_management = SdcoreManagementProvides(self, SDCORE_MANAGEMENT_RELATION_NAME)
         self._sdcore_config = SdcoreConfigProvides(self, SDCORE_CONFIG_RELATION_NAME)
         self.unit.set_ports(GRPC_PORT, WEBUI_URL_PORT)
+        self.framework.observe(self.on.update_status, self._configure_webui)
         self.framework.observe(self.on.webui_pebble_ready, self._configure_webui)
         self.framework.observe(self.on.common_database_relation_joined, self._configure_webui)
         self.framework.observe(self.on.auth_database_relation_joined, self._configure_webui)
@@ -117,8 +124,20 @@ class WebuiOperatorCharm(CharmBase):
         self.framework.observe(self._auth_database.on.database_created, self._configure_webui)
         self.framework.observe(self._common_database.on.endpoints_changed, self._configure_webui)
         self.framework.observe(self._auth_database.on.endpoints_changed, self._configure_webui)
-        self.framework.observe(self.on.sdcore_management_relation_joined, self._configure_webui)
         self.framework.observe(self.on.sdcore_config_relation_joined, self._configure_webui)
+        self.framework.observe(self.fiveg_n4.on.fiveg_n4_available, self._configure_webui)
+        self.framework.observe(
+            self._gnb_identity.on.fiveg_gnb_identity_available,
+            self._configure_webui,
+        )
+        self.framework.observe(
+            self.on[GNB_IDENTITY_RELATION_NAME].relation_broken,
+            self._configure_webui,
+        )
+        self.framework.observe(
+            self.on[FIVEG_N4_RELATION_NAME].relation_broken,
+            self._configure_webui,
+        )
         # Handling config changed event to publish the new url if the unit reboots and gets new IP
         self.framework.observe(self.on.config_changed, self._configure_webui)
 
@@ -132,6 +151,12 @@ class WebuiOperatorCharm(CharmBase):
         Args:
             _ (EventBase): Juju event
         """
+        if not self._container.can_connect():
+            return
+        if not self._container.exists(path=BASE_CONFIG_PATH):
+            return
+        self._configure_upf_information()
+        self._configure_gnb_information()
         for relation in [COMMON_DATABASE_RELATION_NAME, AUTH_DATABASE_RELATION_NAME]:
             if not self._relation_created(relation):
                 return
@@ -139,18 +164,12 @@ class WebuiOperatorCharm(CharmBase):
             return
         if not self._auth_database_resource_is_available():
             return
-        if not self._container.can_connect():
-            return
-        if not self._container.exists(path=BASE_CONFIG_PATH):
-            return
-
         desired_config_file = self._generate_webui_config_file()
 
         if config_update_required := self._is_config_update_required(desired_config_file):
             self._write_config_file(content=desired_config_file)
 
         self._configure_workload(restart=config_update_required)
-        self._publish_sdcore_management_url()
         self._publish_sdcore_config_url()
 
     def _on_collect_unit_status(self, event: CollectStatusEvent):
@@ -197,6 +216,14 @@ class WebuiOperatorCharm(CharmBase):
         if not self._config_file_exists():
             event.add_status(WaitingStatus("Waiting for config file to be stored"))
             logger.info("Waiting for config file to be stored")
+            return
+        if not self._container.exists(path=UPF_CONFIG_PATH):
+            event.add_status(WaitingStatus("Waiting for UPF config file to be stored"))
+            logger.info("Waiting for UPF config file to be stored")
+            return
+        if not self._container.exists(path=GNB_CONFIG_PATH):
+            event.add_status(WaitingStatus("Waiting for GNB config file to be stored"))
+            logger.info("Waiting for GNB config file to be stored")
             return
         if not self._webui_service_is_running():
             event.add_status(WaitingStatus("Waiting for webui service to start"))
@@ -250,6 +277,143 @@ class WebuiOperatorCharm(CharmBase):
             return False
         return service.is_running()
 
+    def _configure_upf_information(self) -> None:
+        """Create the UPF config file.
+
+        The config file is generated based on the various `fiveg_n4` relations and their content.
+        """
+        if not self.model.relations.get(FIVEG_N4_RELATION_NAME):
+            logger.info("Relation %s not available", FIVEG_N4_RELATION_NAME)
+        upf_existing_content = self._get_existing_config_file(path=UPF_CONFIG_PATH)
+        upf_config_content = self._get_upf_config()
+        if not upf_existing_content or not self.config_file_content_matches(
+            existing_content=upf_existing_content,
+            new_content=upf_config_content,
+        ):
+            self._push_upf_config_file_to_workload(upf_config_content)
+
+    def _configure_gnb_information(self) -> None:
+        """Create the GNB config file.
+
+        The config file is generated based on the various `fiveg_gnb_identity` relations
+        and their content.
+        """
+        if not self.model.relations.get(GNB_IDENTITY_RELATION_NAME):
+            logger.info("Relation %s not available", GNB_IDENTITY_RELATION_NAME)
+        gnb_existing_content = self._get_existing_config_file(path=GNB_CONFIG_PATH)
+        gnb_config_content = self._get_gnb_config()
+        if not gnb_existing_content or not self.config_file_content_matches(
+            existing_content=gnb_existing_content,
+            new_content=gnb_config_content,
+        ):
+            self._push_gnb_config_file_to_workload(gnb_config_content)
+
+    def _get_existing_config_file(self, path: str) -> str:
+        """Get the existing config file from the workload.
+
+        Args:
+            path (str): Path to the config file.
+
+        Returns:
+            str: Content of the config file.
+        """
+        if self._container.exists(path=path):
+            existing_content_stringio = self._container.pull(path=path)
+            return existing_content_stringio.read()
+        return ""
+
+    def _get_upf_host_port_list(self) -> List[Tuple[str, int]]:
+        """Get the list of UPF hosts and ports from the `fiveg_n4` relation data bag.
+
+        Returns:
+            List[Tuple[str, int]]: List of UPF hostnames and ports.
+        """
+        upf_host_port_list = []
+        for fiveg_n4_relation in self.model.relations.get(FIVEG_N4_RELATION_NAME, []):
+            if not fiveg_n4_relation.app:
+                logger.warning(
+                    "Application missing from the %s relation data",
+                    FIVEG_N4_RELATION_NAME,
+                )
+                continue
+            port = fiveg_n4_relation.data[fiveg_n4_relation.app].get("upf_port", "")
+            hostname = fiveg_n4_relation.data[fiveg_n4_relation.app].get("upf_hostname", "")
+            if hostname and port:
+                upf_host_port_list.append((hostname, int(port)))
+        return upf_host_port_list
+
+    def _get_gnb_name_tac_list(self) -> List[Tuple[str, int]]:
+        """Get a list gnb_name and TAC from the `fiveg_gnb_identity` relation data bag.
+
+        Returns:
+            List[Tuple[str, int]]: List of gnb_name and TAC.
+        """
+        gnb_name_tac_list = []
+        for gnb_identity_relation in self.model.relations.get(GNB_IDENTITY_RELATION_NAME, []):
+            if not gnb_identity_relation.app:
+                logger.warning(
+                    "Application missing from the %s relation data",
+                    GNB_IDENTITY_RELATION_NAME,
+                )
+                continue
+            gnb_name = gnb_identity_relation.data[gnb_identity_relation.app].get("gnb_name", "")
+            gnb_tac = gnb_identity_relation.data[gnb_identity_relation.app].get("tac", "")
+            if gnb_name and gnb_tac:
+                gnb_name_tac_list.append((gnb_name, int(gnb_tac)))
+        return gnb_name_tac_list
+
+    def _get_upf_config(self) -> str:
+        """Get the UPF configuration for the NMS in a json.
+
+        Returns:
+            str: Json representation of list of dictionaries,
+                each containing UPF hostname and port.
+        """
+        upf_host_port_list = self._get_upf_host_port_list()
+
+        upf_config = []
+        for upf_hostname, upf_port in upf_host_port_list:
+            upf_config_entry = {
+                "hostname": upf_hostname,
+                "port": str(upf_port),
+            }
+            upf_config.append(upf_config_entry)
+        return json.dumps(upf_config, sort_keys=True)
+
+    def _get_gnb_config(self) -> str:
+        """Get the GNB configuration for the NMS in a json format.
+
+        Returns:
+            str: Json representation of list of dictionaries,
+                each containing GNB names and tac.
+        """
+        gnb_name_tac_list = self._get_gnb_name_tac_list()
+
+        gnb_config = []
+        for gnb_name, gnb_tac in gnb_name_tac_list:
+            gnb_conf_entry = {"name": gnb_name, "tac": str(gnb_tac)}
+            gnb_config.append(gnb_conf_entry)
+
+        return json.dumps(gnb_config, sort_keys=True)
+
+    def _push_upf_config_file_to_workload(self, content: str):
+        self._container.push(path=UPF_CONFIG_PATH, source=content)
+        logger.info("Pushed %s config file", UPF_CONFIG_PATH)
+
+    def _push_gnb_config_file_to_workload(self, content: str):
+        self._container.push(path=GNB_CONFIG_PATH, source=content)
+        logger.info("Pushed %s config file", GNB_CONFIG_PATH)
+
+    @staticmethod
+    def config_file_content_matches(existing_content: str, new_content: str) -> bool:
+        """Return whether two config file contents match."""
+        try:
+            existing_content_list = json.loads(existing_content)
+            new_content_list = json.loads(new_content)
+            return existing_content_list == new_content_list
+        except json.JSONDecodeError:
+            return False
+
     def _get_common_database_url(self) -> str:
         if not self._common_database_resource_is_available():
             raise RuntimeError(f"Database `{COMMON_DATABASE_NAME}` is not available")
@@ -287,15 +451,6 @@ class WebuiOperatorCharm(CharmBase):
 
     def _auth_database_resource_is_available(self) -> bool:
         return bool(self._auth_database.is_resource_created())
-
-    def _publish_sdcore_management_url(self) -> None:
-        if not self._relation_created(SDCORE_MANAGEMENT_RELATION_NAME):
-            return
-        if not self._get_webui_endpoint_url():
-            return
-        self._sdcore_management.set_management_url(
-            management_url=self._get_webui_endpoint_url(),
-        )
 
     def _write_config_file(self, content: str) -> None:
         self._container.push(path=f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}", source=content)
@@ -358,6 +513,9 @@ class WebuiOperatorCharm(CharmBase):
             "GRPC_TRACE": "all",
             "GRPC_VERBOSITY": "debug",
             "CONFIGPOD_DEPLOYMENT": "5G",
+            "WEBUI_ENDPOINT": "123.456.789",
+            "UPF_CONFIG_PATH": UPF_CONFIG_PATH,
+            "GNB_CONFIG_PATH": GNB_CONFIG_PATH,
         }
 
 

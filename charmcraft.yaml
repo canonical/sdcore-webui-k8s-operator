@@ -34,12 +34,14 @@ requires:
     interface: mongodb_client
   auth_database:
     interface: mongodb_client
+  fiveg_gnb_identity:
+    interface: fiveg_gnb_identity
+  fiveg_n4:
+    interface: fiveg_n4
   logging:
     interface: loki_push_api
 
 provides:
-  sdcore-management:
-    interface: sdcore_management
   sdcore-config:
     interface: sdcore_config
 
