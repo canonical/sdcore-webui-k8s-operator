@@ -9,11 +9,10 @@ from ops import testing
 
 AUTH_DATABASE_RELATION_NAME = "auth_database"
 COMMON_DATABASE_RELATION_NAME = "common_database"
-SDCORE_CONFIG_RELATION_NAME = "sdcore-config"
 FIVEG_N4_RELATION_NAME = "fiveg_n4"
-TEST_FIVEG_N4_PROVIDER_APP_NAME = "fiveg_n4_provider_app"
 GNB_IDENTITY_RELATION_NAME = "fiveg_gnb_identity"
-TEST_GNB_IDENTITY_PROVIDER_APP_NAME = "fiveg_gnb_identity_provider_app"
+REMOTE_APP_NAME = "some_app"
+SDCORE_CONFIG_RELATION_NAME = "sdcore-config"
 
 class WebuiUnitTestFixtures:
 
@@ -47,7 +46,8 @@ class WebuiUnitTestFixtures:
         self.harness.cleanup()
         request.addfinalizer(self.tearDown)
 
-    def create_common_database_relation_and_populate_data(self) -> int:
+    @pytest.fixture()
+    def common_database_relation_id(self) -> int:
         relation_id = self.harness.add_relation(COMMON_DATABASE_RELATION_NAME, "mongodb")  # type:ignore
         self.harness.add_relation_unit(relation_id=relation_id, remote_unit_name="mongodb/0")  # type:ignore
         self.harness.update_relation_data(  # type:ignore
@@ -59,9 +59,10 @@ class WebuiUnitTestFixtures:
                 "uris": "1.9.11.4:1234",
             },
         )
-        return relation_id
+        yield relation_id
 
-    def create_auth_database_relation_and_populate_data(self) -> int:
+    @pytest.fixture()
+    def auth_database_relation_id(self) -> int:
         relation_id = self.harness.add_relation(AUTH_DATABASE_RELATION_NAME, "mongodb")  # type:ignore
         self.harness.add_relation_unit(relation_id=relation_id, remote_unit_name="mongodb/0")  # type:ignore
         self.harness.update_relation_data(  # type:ignore
@@ -73,11 +74,17 @@ class WebuiUnitTestFixtures:
                 "uris": "1.8.11.4:1234",
             },
         )
-        return relation_id
+        yield relation_id
 
-    def create_sdcore_config_relation(self, requirer) -> None:
-        relation_id = self.harness.add_relation(SDCORE_CONFIG_RELATION_NAME, requirer)  # type:ignore
-        self.harness.add_relation_unit(relation_id=relation_id, remote_unit_name=f"{requirer}/0")  # type:ignore
+    @pytest.fixture()
+    def sdcore_config_relation_id(self) -> None:
+        relation_id = self.harness.add_relation(  # type:ignore
+            SDCORE_CONFIG_RELATION_NAME, REMOTE_APP_NAME
+        )
+        self.harness.add_relation_unit(  # type:ignore
+            relation_id=relation_id, remote_unit_name=f"{REMOTE_APP_NAME}/0"
+        )
+        yield relation_id
 
     def set_gnb_identity_relation_data(self, key_values) -> int:
         """Create the fiveg_gnb_identity relation and set its data.
@@ -87,11 +94,11 @@ class WebuiUnitTestFixtures:
         """
         gnb_identity_relation_id = self.harness.add_relation(
             relation_name=GNB_IDENTITY_RELATION_NAME,
-            remote_app=TEST_GNB_IDENTITY_PROVIDER_APP_NAME,
+            remote_app=REMOTE_APP_NAME,
         )
         self.harness.update_relation_data(
             relation_id=gnb_identity_relation_id,
-            app_or_unit=TEST_GNB_IDENTITY_PROVIDER_APP_NAME,
+            app_or_unit=REMOTE_APP_NAME,
             key_values=key_values,
         )
         return gnb_identity_relation_id
@@ -104,11 +111,11 @@ class WebuiUnitTestFixtures:
         """
         fiveg_n4_relation_id = self.harness.add_relation(
             relation_name=FIVEG_N4_RELATION_NAME,
-            remote_app=TEST_FIVEG_N4_PROVIDER_APP_NAME,
+            remote_app=REMOTE_APP_NAME,
         )
         self.harness.update_relation_data(
             relation_id=fiveg_n4_relation_id,
-            app_or_unit=TEST_FIVEG_N4_PROVIDER_APP_NAME,
+            app_or_unit=REMOTE_APP_NAME,
             key_values=key_values,
         )
         return fiveg_n4_relation_id

@@ -37,19 +37,16 @@ AUTH_DATABASE_NAME = "authentication"
 COMMON_DATABASE_NAME = "free5gc"
 SDCORE_CONFIG_RELATION_NAME = "sdcore-config"
 GRPC_PORT = 9876
-WEBUI_URL_PORT = 5000
+#WEBUI_URL_PORT = 5000
 LOGGING_RELATION_NAME = "logging"
 WORKLOAD_VERSION_FILE_NAME = "/etc/workload-version"
 GNB_CONFIG_PATH = f"{BASE_CONFIG_PATH}/gnb_config.json"
 UPF_CONFIG_PATH = f"{BASE_CONFIG_PATH}/upf_config.json"
+WEBUI_CONFIG_PATH = f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}"
 
 
 def _get_pod_ip() -> Optional[str]:
-    """Return the pod IP using juju client.
-
-    Returns:
-        str: The pod IP.
-    """
+    """Return the pod IP using juju client."""
     try:
         ip_address = check_output(["unit-get", "private-address"])
         return str(IPv4Address(ip_address.decode().strip())) if ip_address else None
@@ -63,17 +60,7 @@ def render_config_file(
     auth_database_name: str,
     auth_database_url: str,
 ) -> str:
-    """Render webui configuration file based on Jinja template.
-
-    Args:
-        common_database_name: Common Database Name
-        common_database_url: Common Database URL.
-        auth_database_name: Authentication Database Name
-        auth_database_url: Authentication Database URL.
-
-    Returns:
-        str: Content of the configuration file.
-    """
+    """Render webui configuration file based on Jinja template."""
     jinja2_environment = Environment(loader=FileSystemLoader("src/templates/"))
     template = jinja2_environment.get_template("webuicfg.conf.j2")
     return template.render(
@@ -115,7 +102,7 @@ class WebuiOperatorCharm(CharmBase):
         self._gnb_identity = GnbIdentityRequires(self, GNB_IDENTITY_RELATION_NAME)
         self._logging = LogForwarder(charm=self, relation_name=LOGGING_RELATION_NAME)
         self._sdcore_config = SdcoreConfigProvides(self, SDCORE_CONFIG_RELATION_NAME)
-        self.unit.set_ports(GRPC_PORT, WEBUI_URL_PORT)
+        #self.unit.set_ports(GRPC_PORT, WEBUI_URL_PORT)
         self.framework.observe(self.on.update_status, self._configure_webui)
         self.framework.observe(self.on.webui_pebble_ready, self._configure_webui)
         self.framework.observe(self.on.common_database_relation_joined, self._configure_webui)
@@ -147,16 +134,13 @@ class WebuiOperatorCharm(CharmBase):
         Whenever a Juju event is emitted, this method performs a couple of checks to make sure that
         the workload is ready to be started. Then, it configures the Webui workload,
         runs the Pebble services and expose the service information through charm's interface.
-
-        Args:
-            _ (EventBase): Juju event
         """
         if not self._container.can_connect():
             return
         if not self._container.exists(path=BASE_CONFIG_PATH):
             return
-        self._configure_upf_information()
-        self._configure_gnb_information()
+        self._create_upf_config_file()
+        self._create_gnb_config_file()
         for relation in [COMMON_DATABASE_RELATION_NAME, AUTH_DATABASE_RELATION_NAME]:
             if not self._relation_created(relation):
                 return
@@ -167,18 +151,15 @@ class WebuiOperatorCharm(CharmBase):
         desired_config_file = self._generate_webui_config_file()
 
         if config_update_required := self._is_config_update_required(desired_config_file):
-            self._write_config_file(content=desired_config_file)
+            self._write_file_in_workload(WEBUI_CONFIG_PATH, desired_config_file)
 
         self._configure_workload(restart=config_update_required)
         self._publish_sdcore_config_url()
 
-    def _on_collect_unit_status(self, event: CollectStatusEvent):
+    def _on_collect_unit_status(self, event: CollectStatusEvent):   # noqa: C901
         """Check the unit status and set to Unit when CollectStatusEvent is fired.
 
         Also sets the workload version if present in rock.
-
-        Args:
-            event: CollectStatusEvent
         """
         if not self.unit.is_leader():
             # NOTE: In cases where leader status is lost before the charm is
@@ -213,9 +194,9 @@ class WebuiOperatorCharm(CharmBase):
             event.add_status(WaitingStatus("Waiting for storage to be attached"))
             logger.info("Waiting for storage to be attached")
             return
-        if not self._config_file_exists():
-            event.add_status(WaitingStatus("Waiting for config file to be stored"))
-            logger.info("Waiting for config file to be stored")
+        if not self._webui_config_file_exists():
+            event.add_status(WaitingStatus("Waiting for webui config file to be stored"))
+            logger.info("Waiting for webui config file to be stored")
             return
         if not self._container.exists(path=UPF_CONFIG_PATH):
             event.add_status(WaitingStatus("Waiting for UPF config file to be stored"))
@@ -231,14 +212,6 @@ class WebuiOperatorCharm(CharmBase):
             return
 
         event.add_status(ActiveStatus())
-
-    def _generate_webui_config_file(self) -> str:
-        return render_config_file(
-            common_database_name=COMMON_DATABASE_NAME,
-            common_database_url=self._get_common_database_url(),
-            auth_database_name=AUTH_DATABASE_NAME,
-            auth_database_url=self._get_auth_database_url(),
-        )
 
     def _publish_sdcore_config_url(self) -> None:
         if not self._relation_created(SDCORE_CONFIG_RELATION_NAME):
@@ -268,6 +241,27 @@ class WebuiOperatorCharm(CharmBase):
             logger.info("Restarted container %s", self._service_name)
             return
 
+    def _is_config_update_required(self, content: str) -> bool:
+        return not self._webui_config_file_exists() or not self._webui_config_file_content_matches(
+            content=content)
+
+    def _webui_config_file_content_matches(self, content: str) -> bool:
+        if not self._webui_config_file_exists():
+            return False
+        existing_content = self._container.pull(path=WEBUI_CONFIG_PATH)
+        return existing_content.read() == content
+
+    def _webui_config_file_exists(self) -> bool:
+        return bool(self._container.exists(WEBUI_CONFIG_PATH))
+
+    def _generate_webui_config_file(self) -> str:
+        return render_config_file(
+            common_database_name=COMMON_DATABASE_NAME,
+            common_database_url=self._get_common_database_url(),
+            auth_database_name=AUTH_DATABASE_NAME,
+            auth_database_url=self._get_auth_database_url(),
+        )
+
     def _webui_service_is_running(self) -> bool:
         if not self._container.can_connect():
             return False
@@ -277,57 +271,47 @@ class WebuiOperatorCharm(CharmBase):
             return False
         return service.is_running()
 
-    def _configure_upf_information(self) -> None:
-        """Create the UPF config file.
+    def _create_upf_config_file(self) -> None:
+        """Generate the UPF config file based on the content of the `fiveg_n4` relations.
 
-        The config file is generated based on the various `fiveg_n4` relations and their content.
+        If the relation does not exist, an empty list [] is written on the file.
         """
         if not self.model.relations.get(FIVEG_N4_RELATION_NAME):
             logger.info("Relation %s not available", FIVEG_N4_RELATION_NAME)
-        upf_existing_content = self._get_existing_config_file(path=UPF_CONFIG_PATH)
-        upf_config_content = self._get_upf_config()
+        upf_existing_content = self._get_file_content(file_path=UPF_CONFIG_PATH)
+        new_upf_config = self._get_upf_config()
         if not upf_existing_content or not self.config_file_content_matches(
             existing_content=upf_existing_content,
-            new_content=upf_config_content,
+            new_content=new_upf_config,
         ):
-            self._push_upf_config_file_to_workload(upf_config_content)
+            self._write_file_in_workload(UPF_CONFIG_PATH, new_upf_config)
 
-    def _configure_gnb_information(self) -> None:
-        """Create the GNB config file.
+    def _create_gnb_config_file(self) -> None:
+        """Generate the gNB config file based on the content of the `fiveg_gnb_identity` relations.
 
-        The config file is generated based on the various `fiveg_gnb_identity` relations
-        and their content.
+        If the relation does not exist, an empty list [] is written on the file.
         """
         if not self.model.relations.get(GNB_IDENTITY_RELATION_NAME):
             logger.info("Relation %s not available", GNB_IDENTITY_RELATION_NAME)
-        gnb_existing_content = self._get_existing_config_file(path=GNB_CONFIG_PATH)
-        gnb_config_content = self._get_gnb_config()
+        gnb_existing_content = self._get_file_content(file_path=GNB_CONFIG_PATH)
+        gnb_new_config = self._get_gnb_config()
         if not gnb_existing_content or not self.config_file_content_matches(
             existing_content=gnb_existing_content,
-            new_content=gnb_config_content,
+            new_content=gnb_new_config,
         ):
-            self._push_gnb_config_file_to_workload(gnb_config_content)
+            self._write_file_in_workload(GNB_CONFIG_PATH, gnb_new_config)
 
-    def _get_existing_config_file(self, path: str) -> str:
-        """Get the existing config file from the workload.
+    def _get_file_content(self, file_path: str) -> str:
+        """Return the content of the file as a string.
 
-        Args:
-            path (str): Path to the config file.
-
-        Returns:
-            str: Content of the config file.
+        Return an empty string if the file does not exist.
         """
-        if self._container.exists(path=path):
-            existing_content_stringio = self._container.pull(path=path)
+        if self._container.exists(path=file_path):
+            existing_content_stringio = self._container.pull(path=file_path)
             return existing_content_stringio.read()
         return ""
 
-    def _get_upf_host_port_list(self) -> List[Tuple[str, int]]:
-        """Get the list of UPF hosts and ports from the `fiveg_n4` relation data bag.
-
-        Returns:
-            List[Tuple[str, int]]: List of UPF hostnames and ports.
-        """
+    def _get_upf_host_port_list_from_relation(self) -> List[Tuple[str, int]]:
         upf_host_port_list = []
         for fiveg_n4_relation in self.model.relations.get(FIVEG_N4_RELATION_NAME, []):
             if not fiveg_n4_relation.app:
@@ -342,12 +326,7 @@ class WebuiOperatorCharm(CharmBase):
                 upf_host_port_list.append((hostname, int(port)))
         return upf_host_port_list
 
-    def _get_gnb_name_tac_list(self) -> List[Tuple[str, int]]:
-        """Get a list gnb_name and TAC from the `fiveg_gnb_identity` relation data bag.
-
-        Returns:
-            List[Tuple[str, int]]: List of gnb_name and TAC.
-        """
+    def _get_gnb_name_tac_list_from_relation(self) -> List[Tuple[str, int]]:
         gnb_name_tac_list = []
         for gnb_identity_relation in self.model.relations.get(GNB_IDENTITY_RELATION_NAME, []):
             if not gnb_identity_relation.app:
@@ -363,13 +342,8 @@ class WebuiOperatorCharm(CharmBase):
         return gnb_name_tac_list
 
     def _get_upf_config(self) -> str:
-        """Get the UPF configuration for the NMS in a json.
-
-        Returns:
-            str: Json representation of list of dictionaries,
-                each containing UPF hostname and port.
-        """
-        upf_host_port_list = self._get_upf_host_port_list()
+        """Get the UPF configuration (UPF hostname and port) for the NMS in json format."""
+        upf_host_port_list = self._get_upf_host_port_list_from_relation()
 
         upf_config = []
         for upf_hostname, upf_port in upf_host_port_list:
@@ -381,13 +355,8 @@ class WebuiOperatorCharm(CharmBase):
         return json.dumps(upf_config, sort_keys=True)
 
     def _get_gnb_config(self) -> str:
-        """Get the GNB configuration for the NMS in a json format.
-
-        Returns:
-            str: Json representation of list of dictionaries,
-                each containing GNB names and tac.
-        """
-        gnb_name_tac_list = self._get_gnb_name_tac_list()
+        """Get the gNB configuration (gNB name ang TAC) in json format."""
+        gnb_name_tac_list = self._get_gnb_name_tac_list_from_relation()
 
         gnb_config = []
         for gnb_name, gnb_tac in gnb_name_tac_list:
@@ -395,14 +364,6 @@ class WebuiOperatorCharm(CharmBase):
             gnb_config.append(gnb_conf_entry)
 
         return json.dumps(gnb_config, sort_keys=True)
-
-    def _push_upf_config_file_to_workload(self, content: str):
-        self._container.push(path=UPF_CONFIG_PATH, source=content)
-        logger.info("Pushed %s config file", UPF_CONFIG_PATH)
-
-    def _push_gnb_config_file_to_workload(self, content: str):
-        self._container.push(path=GNB_CONFIG_PATH, source=content)
-        logger.info("Pushed %s config file", GNB_CONFIG_PATH)
 
     @staticmethod
     def config_file_content_matches(existing_content: str, new_content: str) -> bool:
@@ -428,36 +389,11 @@ class WebuiOperatorCharm(CharmBase):
             "uris"
         ].split(",")[0]
 
-    def _is_config_update_required(self, content: str) -> bool:
-        if not self._config_file_is_written() or not self._config_file_content_matches(
-            content=content
-        ):
-            return True
-        return False
-
-    def _config_file_is_written(self) -> bool:
-        return bool(self._container.exists(f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}"))
-
-    def _config_file_content_matches(self, content: str) -> bool:
-        if not self._container.exists(path=f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}"):
-            return False
-        existing_content = self._container.pull(path=f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}")
-        if existing_content.read() != content:
-            return False
-        return True
-
     def _common_database_resource_is_available(self) -> bool:
         return bool(self._common_database.is_resource_created())
 
     def _auth_database_resource_is_available(self) -> bool:
         return bool(self._auth_database.is_resource_created())
-
-    def _write_config_file(self, content: str) -> None:
-        self._container.push(path=f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}", source=content)
-        logger.info("Pushed %s config file", CONFIG_FILE_NAME)
-
-    def _config_file_exists(self) -> bool:
-        return bool(self._container.exists(f"{BASE_CONFIG_PATH}/{CONFIG_FILE_NAME}"))
 
     def _get_workload_version(self) -> str:
         """Return the workload version.
@@ -477,13 +413,12 @@ class WebuiOperatorCharm(CharmBase):
             return version_file_content
         return ""
 
+    def _write_file_in_workload(self, path: str, content: str) -> None:
+        self._container.push(path=path, source=content)
+        logger.info("Pushed %s config file", path)
+
     def _relation_created(self, relation_name: str) -> bool:
         return bool(self.model.relations[relation_name])
-
-    def _get_webui_endpoint_url(self) -> Optional[str]:
-        if not _get_pod_ip():
-            return None
-        return f"http://{_get_pod_ip()}:{WEBUI_URL_PORT}"
 
     def _get_webui_config_url(self) -> str:
         return f"{self._service_name}:{GRPC_PORT}"
