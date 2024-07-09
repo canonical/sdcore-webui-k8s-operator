@@ -19,6 +19,7 @@ from charms.sdcore_upf_k8s.v0.fiveg_n4 import N4Requires  # type: ignore[import]
 from charms.sdcore_webui_k8s.v0.sdcore_config import (  # type: ignore[import]
     SdcoreConfigProvides,
 )
+from charms.traefik_k8s.v2.ingress import IngressPerAppRequirer  # type: ignore[import]
 from jinja2 import Environment, FileSystemLoader
 from ops import ActiveStatus, BlockedStatus, CollectStatusEvent, ModelError, WaitingStatus
 from ops.charm import CharmBase, EventBase
@@ -37,7 +38,7 @@ AUTH_DATABASE_NAME = "authentication"
 COMMON_DATABASE_NAME = "free5gc"
 SDCORE_CONFIG_RELATION_NAME = "sdcore-config"
 GRPC_PORT = 9876
-#WEBUI_URL_PORT = 5000
+WEBUI_URL_PORT = 5000
 LOGGING_RELATION_NAME = "logging"
 WORKLOAD_VERSION_FILE_NAME = "/etc/workload-version"
 GNB_CONFIG_PATH = f"{BASE_CONFIG_PATH}/gnb_config.json"
@@ -98,11 +99,17 @@ class WebuiOperatorCharm(CharmBase):
             database_name=AUTH_DATABASE_NAME,
             extra_user_roles="admin",
         )
+        self.unit.set_ports(GRPC_PORT, WEBUI_URL_PORT)
+        self.ingress = IngressPerAppRequirer(
+            charm=self,
+            port=WEBUI_URL_PORT,
+            relation_name="ingress",
+            strip_prefix=True,
+        )
         self.fiveg_n4 = N4Requires(charm=self, relation_name=FIVEG_N4_RELATION_NAME)
         self._gnb_identity = GnbIdentityRequires(self, GNB_IDENTITY_RELATION_NAME)
         self._logging = LogForwarder(charm=self, relation_name=LOGGING_RELATION_NAME)
         self._sdcore_config = SdcoreConfigProvides(self, SDCORE_CONFIG_RELATION_NAME)
-        #self.unit.set_ports(GRPC_PORT, WEBUI_URL_PORT)
         self.framework.observe(self.on.update_status, self._configure_webui)
         self.framework.observe(self.on.webui_pebble_ready, self._configure_webui)
         self.framework.observe(self.on.common_database_relation_joined, self._configure_webui)
@@ -448,7 +455,7 @@ class WebuiOperatorCharm(CharmBase):
             "GRPC_TRACE": "all",
             "GRPC_VERBOSITY": "debug",
             "CONFIGPOD_DEPLOYMENT": "5G",
-            "WEBUI_ENDPOINT": "123.456.789",
+            "SWAGGER_HOST": _get_pod_ip(),
             "UPF_CONFIG_PATH": UPF_CONFIG_PATH,
             "GNB_CONFIG_PATH": GNB_CONFIG_PATH,
         }

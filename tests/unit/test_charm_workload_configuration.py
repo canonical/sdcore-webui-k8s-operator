@@ -53,6 +53,8 @@ class TestCharmWorkloadConfiguration(WebuiUnitTestFixtures):
     def test_given_container_is_ready_db_relations_exist_and_storage_attached_when_pebble_ready_then_pebble_plan_is_applied(  # noqa: E501
         self, auth_database_relation_id, common_database_relation_id
     ):
+        pod_ip = "1.1.1.0"
+        self.mock_check_output.return_value = pod_ip.encode()
         self.harness.add_storage("config", attach=True)
         self.harness.container_pebble_ready(container_name=CONTAINER)
 
@@ -68,7 +70,7 @@ class TestCharmWorkloadConfiguration(WebuiUnitTestFixtures):
                         "GRPC_TRACE": "all",
                         "GRPC_VERBOSITY": "debug",
                         "CONFIGPOD_DEPLOYMENT": "5G",
-                        "WEBUI_ENDPOINT": "123.456.789",
+                        "SWAGGER_HOST": pod_ip,
                         "UPF_CONFIG_PATH": "/etc/webui/upf_config.json",
                         "GNB_CONFIG_PATH": "/etc/webui/gnb_config.json",
                     },
@@ -81,6 +83,8 @@ class TestCharmWorkloadConfiguration(WebuiUnitTestFixtures):
     def test_given_container_is_ready_all_relations_exist_and_storage_attached_when_pebble_ready_then_pebble_plan_is_applied(  # noqa: E501
         self, auth_database_relation_id, common_database_relation_id
     ):
+        pod_ip = "1.2.3.4"
+        self.mock_check_output.return_value = pod_ip.encode()
         self.harness.add_storage("config", attach=True)
         self.set_n4_relation_data({"upf_hostname": "some.host.name", "upf_port": "1234"})
         self.set_gnb_identity_relation_data({"gnb_name": "some.gnb.name", "tac": "1234"})
@@ -99,7 +103,7 @@ class TestCharmWorkloadConfiguration(WebuiUnitTestFixtures):
                         "GRPC_TRACE": "all",
                         "GRPC_VERBOSITY": "debug",
                         "CONFIGPOD_DEPLOYMENT": "5G",
-                        "WEBUI_ENDPOINT": "123.456.789",
+                        "SWAGGER_HOST": pod_ip,
                         "UPF_CONFIG_PATH": "/etc/webui/upf_config.json",
                         "GNB_CONFIG_PATH": "/etc/webui/gnb_config.json",
                     },

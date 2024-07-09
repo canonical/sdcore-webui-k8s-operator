@@ -2,12 +2,14 @@
 # Copyright 2023 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-
+import json
 import logging
+import time
 from collections import Counter
 from pathlib import Path
 
 import pytest
+import requests  # type: ignore[import]
 import yaml
 from juju.application import Application
 from pytest_operator.plugin import OpsTest
@@ -41,7 +43,6 @@ async def _deploy_database(ops_test: OpsTest):
         channel=DATABASE_APP_CHANNEL,
         trust=True,
     )
-
 
 async def _deploy_grafana_agent(ops_test: OpsTest):
     assert ops_test.model
@@ -78,6 +79,61 @@ async def _deploy_sdcore_gnbsim(ops_test: OpsTest):
         channel=GNBSIM_CHARM_CHANNEL,
         trust=True,
     )
+
+async def get_sdcore_nms_endpoint(ops_test: OpsTest) -> str:
+    """Retrieve the SD-Core NMS endpoint by using Traefik's `show-proxied-endpoints` action."""
+    assert ops_test.model
+    traefik = ops_test.model.applications[TRAEFIK_CHARM_NAME]
+    traefik_unit = traefik.units[0]
+    t0 = time.time()
+    timeout = 30  # seconds
+    while time.time() - t0 < timeout:
+        proxied_endpoint_action = await traefik_unit.run_action(
+            action_name="show-proxied-endpoints"
+        )
+        action_output = await ops_test.model.get_action_output(
+            action_uuid=proxied_endpoint_action.entity_id, wait=30
+        )
+
+        if "proxied-endpoints" in action_output:
+            proxied_endpoints = json.loads(action_output["proxied-endpoints"])
+            return proxied_endpoints[APP_NAME]["url"]
+        else:
+            logger.info("Traefik did not return proxied endpoints yet")
+        time.sleep(2)
+
+    raise TimeoutError("Traefik did not return proxied endpoints")
+
+
+async def get_traefik_ip(ops_test: OpsTest) -> str:
+    """Retrieve the IP of the Traefik Application."""
+    assert ops_test.model
+    app_status = await ops_test.model.get_status(filters=[TRAEFIK_CHARM_NAME])
+    return app_status.applications[TRAEFIK_CHARM_NAME].public_address
+
+
+def _get_host_from_url(url: str) -> str:
+    """Return the host from a URL formatted as http://<host>:<port>/ or as http://<host>/."""
+    return url.split("//")[1].split(":")[0].split("/")[0]
+
+
+def ui_is_running(ip: str, host: str) -> bool:
+    """Return whether the UI is running."""
+    #url = f"http://{ip}/network-configuration"
+    url = f"http://{ip}/config/v1/network-slice"
+    headers = {"Host": host}
+    t0 = time.time()
+    timeout = 300  # seconds
+    while time.time() - t0 < timeout:
+        try:
+            response = requests.get(url=url, headers=headers, timeout=5)
+            response.raise_for_status()
+            if "5G NMS" in response.content.decode("utf-8"):
+                return True
+        except Exception as e:
+            logger.info(f"UI is not running yet: {e}")
+        time.sleep(2)
+    return False
 
 @pytest.fixture(scope="module")
 @pytest.mark.abort_on_fail
@@ -130,10 +186,13 @@ async def test_relate_and_wait_for_active_status(ops_test: OpsTest, deploy):
     await ops_test.model.integrate(
         relation1=f"{APP_NAME}:{UPF_RELATION_NAME}", relation2=UPF_CHARM_NAME
     )
+    await ops_test.model.integrate(
+        relation1=f"{APP_NAME}:ingress", relation2=f"{TRAEFIK_CHARM_NAME}:ingress"
+    )
     await ops_test.model.wait_for_idle(
-        apps=[APP_NAME],
+        apps=[APP_NAME, TRAEFIK_CHARM_NAME],
         status="active",
-        timeout=1000,
+        timeout=500,
     )
 
 
@@ -161,6 +220,15 @@ async def test_restore_database_and_wait_for_active_status(ops_test: OpsTest, de
         relation1=f"{APP_NAME}:{AUTH_DATABASE_RELATION_NAME}", relation2=DATABASE_APP_NAME
     )
     await ops_test.model.wait_for_idle(apps=[APP_NAME], status="active", timeout=1000)
+
+@pytest.mark.abort_on_fail
+async def test_given_related_to_traefik_when_fetch_ui_then_returns_html_content(
+    ops_test: OpsTest, deploy
+):
+    nms_url = await get_sdcore_nms_endpoint(ops_test)
+    traefik_ip = await get_traefik_ip(ops_test)
+    nms_host = _get_host_from_url(nms_url)
+    assert ui_is_running(ip=traefik_ip, host=nms_host)
 
 
 @pytest.mark.abort_on_fail

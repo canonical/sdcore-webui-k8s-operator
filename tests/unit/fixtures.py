@@ -42,6 +42,7 @@ class WebuiUnitTestFixtures:
         self.harness = testing.Harness(WebuiOperatorCharm)
         self.harness.set_model_name(name="whatever")
         self.harness.set_leader(is_leader=True)
+        #self.mock_check_output.return_value = b"1.1.1.0"
         self.harness.begin()
         yield self.harness
         self.harness.cleanup()
