@@ -21,12 +21,19 @@ DATABASE_APP_CHANNEL = "6/beta"
 COMMON_DATABASE_RELATION_NAME = "common_database"
 AUTH_DATABASE_RELATION_NAME = "auth_database"
 LOGGING_RELATION_NAME = "logging"
+GNBSIM_CHARM_NAME = "sdcore-gnbsim-k8s"
+GNBSIM_CHARM_CHANNEL = "1.5/edge"
+GNBSIM_RELATION_NAME = "fiveg_gnb_identity"
 GRAFANA_AGENT_APP_NAME = "grafana-agent-k8s"
 GRAFANA_AGENT_APP_CHANNEL = "latest/stable"
+UPF_CHARM_NAME = "sdcore-upf-k8s"
+UPF_CHARM_CHANNEL = "1.5/edge"
+UPF_RELATION_NAME = "fiveg_n4"
+TRAEFIK_CHARM_NAME = "traefik-k8s"
+TRAEFIK_CHARM_CHANNEL = "latest/stable"
 
 
 async def _deploy_database(ops_test: OpsTest):
-    """Deploy a MongoDB."""
     assert ops_test.model
     await ops_test.model.deploy(
         DATABASE_APP_NAME,
@@ -37,7 +44,6 @@ async def _deploy_database(ops_test: OpsTest):
 
 
 async def _deploy_grafana_agent(ops_test: OpsTest):
-    """Deploy Grafana Agent."""
     assert ops_test.model
     await ops_test.model.deploy(
         GRAFANA_AGENT_APP_NAME,
@@ -45,6 +51,33 @@ async def _deploy_grafana_agent(ops_test: OpsTest):
         channel=GRAFANA_AGENT_APP_CHANNEL,
     )
 
+async def _deploy_traefik(ops_test: OpsTest):
+    assert ops_test.model
+    await ops_test.model.deploy(
+        TRAEFIK_CHARM_NAME,
+        application_name=TRAEFIK_CHARM_NAME,
+        config={"external_hostname": "pizza.com", "routing_mode": "subdomain"},
+        channel=TRAEFIK_CHARM_CHANNEL,
+        trust=True,
+    )
+
+async def _deploy_sdcore_upf(ops_test: OpsTest):
+    assert ops_test.model
+    await ops_test.model.deploy(
+        UPF_CHARM_NAME,
+        application_name=UPF_CHARM_NAME,
+        channel=UPF_CHARM_CHANNEL,
+        trust=True,
+    )
+
+async def _deploy_sdcore_gnbsim(ops_test: OpsTest):
+    assert ops_test.model
+    await ops_test.model.deploy(
+        GNBSIM_CHARM_NAME,
+        application_name=GNBSIM_CHARM_NAME,
+        channel=GNBSIM_CHARM_CHANNEL,
+        trust=True,
+    )
 
 @pytest.fixture(scope="module")
 @pytest.mark.abort_on_fail
@@ -63,7 +96,9 @@ async def deploy(ops_test: OpsTest, request):
     )
     await _deploy_database(ops_test)
     await _deploy_grafana_agent(ops_test)
-
+    await _deploy_traefik(ops_test)
+    await _deploy_sdcore_upf(ops_test)
+    await _deploy_sdcore_gnbsim(ops_test)
 
 @pytest.mark.abort_on_fail
 async def test_given_charm_is_built_when_deployed_then_status_is_blocked(
@@ -88,6 +123,12 @@ async def test_relate_and_wait_for_active_status(ops_test: OpsTest, deploy):
     )
     await ops_test.model.integrate(
         relation1=f"{APP_NAME}:{LOGGING_RELATION_NAME}", relation2=GRAFANA_AGENT_APP_NAME
+    )
+    await ops_test.model.integrate(
+        relation1=f"{APP_NAME}:{GNBSIM_RELATION_NAME}", relation2=GNBSIM_CHARM_NAME
+    )
+    await ops_test.model.integrate(
+        relation1=f"{APP_NAME}:{UPF_RELATION_NAME}", relation2=UPF_CHARM_NAME
     )
     await ops_test.model.wait_for_idle(
         apps=[APP_NAME],

@@ -30,6 +30,9 @@ storage:
     minimum-size: 1M
 
 requires:
+  ingress:
+    interface: ingress
+    limit: 1
   common_database:
     interface: mongodb_client
   auth_database:

@@ -8,6 +8,21 @@ output "app_name" {
 
 # Required integration endpoints
 
+output "ingress_endpoint" {
+  description = "Name of the endpoint to integrate with ingress interface."
+  value       = "ingress"
+}
+
+output "fiveg_gnb_identity_endpoint" {
+  description = "Name of the endpoint to integrate with fiveg_gnb_identity interface."
+  value       = "fiveg_gnb_identity"
+}
+
+output "fiveg_n4_endpoint" {
+  description = "Name of the endpoint to integrate with fiveg_n4 interface."
+  value       = "fiveg_n4"
+}
+
 output "common_database_endpoint" {
   description = "Name of the endpoint to integrate with MongoDB for common database using mongodb_client interface."
   value       = "common_database"
@@ -24,11 +39,6 @@ output "logging_endpoint" {
 }
 
 # Provided integration endpoints
-
-output "sdcore_management_endpoint" {
-  description = "Name of the endpoint to provide `sdcore_management` interface."
-  value       = "sdcore-management"
-}
 
 output "sdcore_config_endpoint" {
   description = "Name of the endpoint to provide `sdcore_config` interface."

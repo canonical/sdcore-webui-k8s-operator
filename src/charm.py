@@ -280,7 +280,7 @@ class WebuiOperatorCharm(CharmBase):
             logger.info("Relation %s not available", FIVEG_N4_RELATION_NAME)
         upf_existing_content = self._get_file_content(file_path=UPF_CONFIG_PATH)
         new_upf_config = self._get_upf_config()
-        if not upf_existing_content or not self.config_file_content_matches(
+        if not upf_existing_content or not self._file_content_matches(
             existing_content=upf_existing_content,
             new_content=new_upf_config,
         ):
@@ -295,7 +295,7 @@ class WebuiOperatorCharm(CharmBase):
             logger.info("Relation %s not available", GNB_IDENTITY_RELATION_NAME)
         gnb_existing_content = self._get_file_content(file_path=GNB_CONFIG_PATH)
         gnb_new_config = self._get_gnb_config()
-        if not gnb_existing_content or not self.config_file_content_matches(
+        if not gnb_existing_content or not self._file_content_matches(
             existing_content=gnb_existing_content,
             new_content=gnb_new_config,
         ):
@@ -366,7 +366,7 @@ class WebuiOperatorCharm(CharmBase):
         return json.dumps(gnb_config, sort_keys=True)
 
     @staticmethod
-    def config_file_content_matches(existing_content: str, new_content: str) -> bool:
+    def _file_content_matches(existing_content: str, new_content: str) -> bool:
         """Return whether two config file contents match."""
         try:
             existing_content_list = json.loads(existing_content)
