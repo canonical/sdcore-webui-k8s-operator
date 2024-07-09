@@ -1,6 +1,7 @@
 # Copyright 2024 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+from typing import Generator
 from unittest.mock import patch
 
 import pytest
@@ -47,7 +48,7 @@ class WebuiUnitTestFixtures:
         request.addfinalizer(self.tearDown)
 
     @pytest.fixture()
-    def common_database_relation_id(self) -> int:
+    def common_database_relation_id(self) -> Generator[int, None, None]:
         relation_id = self.harness.add_relation(COMMON_DATABASE_RELATION_NAME, "mongodb")  # type:ignore
         self.harness.add_relation_unit(relation_id=relation_id, remote_unit_name="mongodb/0")  # type:ignore
         self.harness.update_relation_data(  # type:ignore
@@ -62,7 +63,7 @@ class WebuiUnitTestFixtures:
         yield relation_id
 
     @pytest.fixture()
-    def auth_database_relation_id(self) -> int:
+    def auth_database_relation_id(self) -> Generator[int, None, None]:
         relation_id = self.harness.add_relation(AUTH_DATABASE_RELATION_NAME, "mongodb")  # type:ignore
         self.harness.add_relation_unit(relation_id=relation_id, remote_unit_name="mongodb/0")  # type:ignore
         self.harness.update_relation_data(  # type:ignore
@@ -77,7 +78,7 @@ class WebuiUnitTestFixtures:
         yield relation_id
 
     @pytest.fixture()
-    def sdcore_config_relation_id(self) -> None:
+    def sdcore_config_relation_id(self) -> Generator[int, None, None]:
         relation_id = self.harness.add_relation(  # type:ignore
             SDCORE_CONFIG_RELATION_NAME, REMOTE_APP_NAME
         )
@@ -92,11 +93,11 @@ class WebuiUnitTestFixtures:
         Returns:
             int: ID of the created relation
         """
-        gnb_identity_relation_id = self.harness.add_relation(
+        gnb_identity_relation_id = self.harness.add_relation(  # type:ignore
             relation_name=GNB_IDENTITY_RELATION_NAME,
             remote_app=REMOTE_APP_NAME,
         )
-        self.harness.update_relation_data(
+        self.harness.update_relation_data(  # type:ignore
             relation_id=gnb_identity_relation_id,
             app_or_unit=REMOTE_APP_NAME,
             key_values=key_values,
@@ -109,11 +110,11 @@ class WebuiUnitTestFixtures:
         Returns:
             int: ID of the created relation
         """
-        fiveg_n4_relation_id = self.harness.add_relation(
+        fiveg_n4_relation_id = self.harness.add_relation(  # type:ignore
             relation_name=FIVEG_N4_RELATION_NAME,
             remote_app=REMOTE_APP_NAME,
         )
-        self.harness.update_relation_data(
+        self.harness.update_relation_data(  # type:ignore
             relation_id=fiveg_n4_relation_id,
             app_or_unit=REMOTE_APP_NAME,
             key_values=key_values,

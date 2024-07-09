@@ -10,7 +10,7 @@ from ops.model import ModelError
 
 CONTAINER = "webui"
 CONTAINER_CONFIG_FILE_PATH = "etc/webui/webuicfg.conf"
-EXPECTED_CONFIG_FILE_PATH = "tests/unit/expected_webui_cfg.json"
+EXPECTED_CONFIG_FILE_PATH = "tests/unit/expected_webui_cfg.yaml"
 GNB_IDENTITY_RELATION_NAME = "fiveg_gnb_identity"
 GNB_CONFIG_FILE = "etc/webui/gnb_config.json"
 FIVEG_N4_RELATION_NAME = "fiveg_n4"
