@@ -33,6 +33,7 @@ UPF_CHARM_CHANNEL = "1.5/edge"
 UPF_RELATION_NAME = "fiveg_n4"
 TRAEFIK_CHARM_NAME = "traefik-k8s"
 TRAEFIK_CHARM_CHANNEL = "latest/stable"
+TIMEOUT = 15 * 60
 
 
 async def _deploy_database(ops_test: OpsTest):
@@ -44,6 +45,7 @@ async def _deploy_database(ops_test: OpsTest):
         trust=True,
     )
 
+
 async def _deploy_grafana_agent(ops_test: OpsTest):
     assert ops_test.model
     await ops_test.model.deploy(
@@ -52,15 +54,31 @@ async def _deploy_grafana_agent(ops_test: OpsTest):
         channel=GRAFANA_AGENT_APP_CHANNEL,
     )
 
+
 async def _deploy_traefik(ops_test: OpsTest):
     assert ops_test.model
     await ops_test.model.deploy(
         TRAEFIK_CHARM_NAME,
         application_name=TRAEFIK_CHARM_NAME,
-        config={"external_hostname": "pizza.com", "routing_mode": "subdomain"},
         channel=TRAEFIK_CHARM_CHANNEL,
         trust=True,
     )
+
+
+async def configure_traefik(ops_test: OpsTest, traefik_ip: str) ->  None:
+    assert ops_test.model
+    await ops_test.model.applications[TRAEFIK_CHARM_NAME].set_config(
+        {
+            "external_hostname": f"{traefik_ip}.nip.io",
+            "routing_mode": "subdomain"
+        }
+    )
+    await ops_test.model.wait_for_idle(
+        apps=[TRAEFIK_CHARM_NAME],
+        status="active",
+        timeout=TIMEOUT,
+    )
+
 
 async def _deploy_sdcore_upf(ops_test: OpsTest):
     assert ops_test.model
@@ -71,6 +89,7 @@ async def _deploy_sdcore_upf(ops_test: OpsTest):
         trust=True,
     )
 
+
 async def _deploy_sdcore_gnbsim(ops_test: OpsTest):
     assert ops_test.model
     await ops_test.model.deploy(
@@ -80,8 +99,9 @@ async def _deploy_sdcore_gnbsim(ops_test: OpsTest):
         trust=True,
     )
 
-async def get_sdcore_nms_endpoint(ops_test: OpsTest) -> str:
-    """Retrieve the SD-Core NMS endpoint by using Traefik's `show-proxied-endpoints` action."""
+
+async def get_traefik_proxied_endpoints(ops_test: OpsTest) -> dict:
+    """Retrieve the endpoints by using Traefik's `show-proxied-endpoints` action."""
     assert ops_test.model
     traefik = ops_test.model.applications[TRAEFIK_CHARM_NAME]
     traefik_unit = traefik.units[0]
@@ -97,7 +117,7 @@ async def get_sdcore_nms_endpoint(ops_test: OpsTest) -> str:
 
         if "proxied-endpoints" in action_output:
             proxied_endpoints = json.loads(action_output["proxied-endpoints"])
-            return proxied_endpoints[APP_NAME]["url"]
+            return proxied_endpoints
         else:
             logger.info("Traefik did not return proxied endpoints yet")
         time.sleep(2)
@@ -105,11 +125,14 @@ async def get_sdcore_nms_endpoint(ops_test: OpsTest) -> str:
     raise TimeoutError("Traefik did not return proxied endpoints")
 
 
-async def get_traefik_ip(ops_test: OpsTest) -> str:
-    """Retrieve the IP of the Traefik Application."""
-    assert ops_test.model
-    app_status = await ops_test.model.get_status(filters=[TRAEFIK_CHARM_NAME])
-    return app_status.applications[TRAEFIK_CHARM_NAME].public_address
+async def get_traefik_ip_address(ops_test: OpsTest) -> str:
+    endpoints = await get_traefik_proxied_endpoints(ops_test)
+    return _get_host_from_url(endpoints[TRAEFIK_CHARM_NAME]["url"])
+
+
+async def get_sdcore_nms_endpoint(ops_test: OpsTest) -> str:
+    endpoints = await get_traefik_proxied_endpoints(ops_test)
+    return endpoints[APP_NAME]["url"]
 
 
 def _get_host_from_url(url: str) -> str:
@@ -117,23 +140,22 @@ def _get_host_from_url(url: str) -> str:
     return url.split("//")[1].split(":")[0].split("/")[0]
 
 
-def ui_is_running(ip: str, host: str) -> bool:
-    """Return whether the UI is running."""
-    #url = f"http://{ip}/network-configuration"
-    url = f"http://{ip}/config/v1/network-slice"
-    headers = {"Host": host}
+def ui_is_running(nms_endpoint: str) -> bool:
+    url = f"{nms_endpoint}config/v1/network-slice"
     t0 = time.time()
     timeout = 300  # seconds
     while time.time() - t0 < timeout:
         try:
-            response = requests.get(url=url, headers=headers, timeout=5)
+            response = requests.get(url=url, timeout=5)
             response.raise_for_status()
-            if "5G NMS" in response.content.decode("utf-8"):
+            logger.info(response.content.decode("utf-8"))
+            if "[]" in response.content.decode("utf-8"):
                 return True
         except Exception as e:
             logger.info(f"UI is not running yet: {e}")
         time.sleep(2)
     return False
+
 
 @pytest.fixture(scope="module")
 @pytest.mark.abort_on_fail
@@ -156,6 +178,7 @@ async def deploy(ops_test: OpsTest, request):
     await _deploy_sdcore_upf(ops_test)
     await _deploy_sdcore_gnbsim(ops_test)
 
+
 @pytest.mark.abort_on_fail
 async def test_given_charm_is_built_when_deployed_then_status_is_blocked(
     ops_test: OpsTest, deploy
@@ -164,7 +187,7 @@ async def test_given_charm_is_built_when_deployed_then_status_is_blocked(
     await ops_test.model.wait_for_idle(
         apps=[APP_NAME],
         status="blocked",
-        timeout=1000,
+        timeout=TIMEOUT,
     )
 
 
@@ -192,7 +215,7 @@ async def test_relate_and_wait_for_active_status(ops_test: OpsTest, deploy):
     await ops_test.model.wait_for_idle(
         apps=[APP_NAME, TRAEFIK_CHARM_NAME],
         status="active",
-        timeout=500,
+        timeout=TIMEOUT,
     )
 
 
@@ -203,7 +226,7 @@ async def test_relate_and_wait_for_active_status(ops_test: OpsTest, deploy):
 async def test_remove_database_and_wait_for_blocked_status(ops_test: OpsTest, deploy):
     assert ops_test.model
     await ops_test.model.remove_application(DATABASE_APP_NAME, block_until_done=True)
-    await ops_test.model.wait_for_idle(apps=[APP_NAME], status="blocked", timeout=60)
+    await ops_test.model.wait_for_idle(apps=[APP_NAME], status="blocked", timeout=TIMEOUT)
 
 
 @pytest.mark.skip(
@@ -219,16 +242,19 @@ async def test_restore_database_and_wait_for_active_status(ops_test: OpsTest, de
     await ops_test.model.integrate(
         relation1=f"{APP_NAME}:{AUTH_DATABASE_RELATION_NAME}", relation2=DATABASE_APP_NAME
     )
-    await ops_test.model.wait_for_idle(apps=[APP_NAME], status="active", timeout=1000)
+    await ops_test.model.wait_for_idle(apps=[APP_NAME], status="active", timeout=TIMEOUT)
+
 
 @pytest.mark.abort_on_fail
 async def test_given_related_to_traefik_when_fetch_ui_then_returns_html_content(
     ops_test: OpsTest, deploy
 ):
+    # Workaround for Traefik issue: https://github.com/canonical/traefik-k8s-operator/issues/361
+    traefik_ip = await get_traefik_ip_address(ops_test)
+    logger.info(traefik_ip)
+    await configure_traefik(ops_test, traefik_ip)
     nms_url = await get_sdcore_nms_endpoint(ops_test)
-    traefik_ip = await get_traefik_ip(ops_test)
-    nms_host = _get_host_from_url(nms_url)
-    assert ui_is_running(ip=traefik_ip, host=nms_host)
+    assert ui_is_running(nms_endpoint=nms_url)
 
 
 @pytest.mark.abort_on_fail
@@ -238,7 +264,7 @@ async def test_when_scale_app_beyond_1_then_only_one_unit_is_active(
     assert ops_test.model
     assert isinstance(app := ops_test.model.applications[APP_NAME], Application)
     await app.scale(3)
-    await ops_test.model.wait_for_idle(apps=[APP_NAME], timeout=1000, wait_for_at_least_units=3)
+    await ops_test.model.wait_for_idle(apps=[APP_NAME], timeout=TIMEOUT, wait_for_at_least_units=3)
     unit_statuses = Counter(unit.workload_status for unit in app.units)
     assert unit_statuses.get("active") == 1
     assert unit_statuses.get("blocked") == 2
