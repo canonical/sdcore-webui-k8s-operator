@@ -27,7 +27,7 @@ resources:
 storage:
   config:
     type: filesystem
-    minimum-size: 1M
+    minimum-size: 6M
 
 requires:
   ingress:

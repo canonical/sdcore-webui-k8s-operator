@@ -18,9 +18,6 @@ SDCORE_CONFIG_RELATION_NAME = "sdcore-config"
 class WebuiUnitTestFixtures:
 
     patcher_check_output = patch("charm.check_output")
-    patcher_set_management_url = patch(
-        "charms.sdcore_webui_k8s.v0.sdcore_management.SdcoreManagementProvides.set_management_url"
-    )
     patcher_get_service = patch("ops.model.Container.get_service")
     patcher_set_webui_url_in_all_relations = patch(
         "charms.sdcore_webui_k8s.v0.sdcore_config.SdcoreConfigProvides.set_webui_url_in_all_relations"
@@ -29,7 +26,6 @@ class WebuiUnitTestFixtures:
     @pytest.fixture()
     def setUp(self):
         self.mock_check_output = WebuiUnitTestFixtures.patcher_check_output.start()
-        self.mock_set_management_url = WebuiUnitTestFixtures.patcher_set_management_url.start()
         self.mock_get_service = WebuiUnitTestFixtures.patcher_get_service.start()
         self.mock_set_webui_url_in_all_relations = WebuiUnitTestFixtures.patcher_set_webui_url_in_all_relations.start()  # noqa: E501
 
