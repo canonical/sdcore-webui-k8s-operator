@@ -4,6 +4,8 @@
 #
 #    pip-compile --constraint=requirements.txt test-requirements.in
 #
+annotated-types==0.7.0
+    # via pydantic
 asttokens==2.4.1
     # via stack-data
 bcrypt==4.1.2
@@ -22,7 +24,7 @@ charset-normalizer==3.3.2
     # via requests
 codespell==2.3.0
     # via -r test-requirements.in
-cosl==0.0.12
+cosl==0.0.15
     # via -r test-requirements.in
 coverage[toml]==7.6.0
     # via -r test-requirements.in
@@ -101,6 +103,10 @@ pyasn1-modules==0.3.0
     # via google-auth
 pycparser==2.21
     # via cffi
+pydantic==2.8.2
+    # via cosl
+pydantic-core==2.20.1
+    # via pydantic
 pygments==2.17.2
     # via ipython
 pymacaroons==0.13.0
@@ -169,6 +175,8 @@ typing-extensions==4.10.0
     # via
     #   cosl
     #   mypy
+    #   pydantic
+    #   pydantic-core
     #   typing-inspect
 typing-inspect==0.9.0
     # via juju
