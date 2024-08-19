@@ -26,7 +26,7 @@ click==8.1.7
     # via typer
 codespell==2.3.0
     # via -r test-requirements.in
-cosl==0.0.20
+cosl==0.0.22
     # via -r test-requirements.in
 coverage[toml]==7.6.1
     # via -r test-requirements.in
@@ -176,6 +176,8 @@ six==1.16.0
     #   python-dateutil
 stack-data==0.6.3
     # via ipython
+tenacity==9.0.0
+    # via cosl
 toposort==1.10
     # via juju
 traitlets==5.14.3
