@@ -30,7 +30,7 @@ cosl==0.0.23
     # via -r test-requirements.in
 coverage[toml]==7.6.1
     # via -r test-requirements.in
-cryptography==43.0.0
+cryptography==43.0.1
     # via paramiko
 decorator==5.1.1
     # via
