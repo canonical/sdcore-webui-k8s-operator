@@ -89,7 +89,7 @@ oauthlib==3.2.2
     # via
     #   kubernetes
     #   requests-oauthlib
-ops==2.15.0
+ops==2.17.0
     # via cosl
 packaging==24.1
     # via
